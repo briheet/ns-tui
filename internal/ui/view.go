@@ -33,12 +33,32 @@ func (m Model) renderSearchView() string {
 	// Add top margin
 	s.WriteString("\n")
 
-	// Title with ASCII art - centered
-	title := styles.TitleStyle.Render("⚡ NixOS Package Search ⚡")
-	s.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(title))
-	s.WriteString("\n")
+	// ASCII Banner
+	bannerStyle := lipgloss.NewStyle().Foreground(styles.ColorBlue).Bold(true)
+	bannerGrayStyle := lipgloss.NewStyle().Foreground(styles.ColorGray)
 
-	subtitle := styles.SubtitleStyle.Render("Real-time package discovery")
+	bannerLines := []string{
+		"'##::: ##::'######:::::::::::'########:'##::::'##:'####:",
+		" ###:: ##:'##... ##::::::::::... ##..:: ##:::: ##:. ##::",
+		" ####: ##: ##:::..:::::::::::::: ##:::: ##:::: ##:: ##::",
+		" ## ## ##:. ######::'#######:::: ##:::: ##:::: ##:: ##::",
+		" ##. ####::..... ##:........:::: ##:::: ##:::: ##:: ##::",
+		" ##:. ###:'##::: ##::::::::::::: ##:::: ##:::: ##:: ##::",
+		" ##::. ##:. ######:::::::::::::: ##::::. #######::'####:",
+	}
+
+	for _, line := range bannerLines {
+		styledLine := bannerStyle.Render(line)
+		s.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(styledLine))
+		s.WriteString("\n")
+	}
+
+	// Last line with dots in gray
+	dotsLine := bannerGrayStyle.Render("..::::..:::......:::::::::::::::..::::::.......:::.....::")
+	s.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(dotsLine))
+	s.WriteString("\n\n")
+
+	subtitle := styles.SubtitleStyle.Render("Real-time package discovery with fuzzy search")
 	s.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(subtitle))
 	s.WriteString("\n\n")
 
