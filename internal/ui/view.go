@@ -150,13 +150,15 @@ func (m Model) renderSearchView() string {
 	header.WriteString("\n\n")
 
 	headerContent := header.String()
+	headerLines := strings.Count(headerContent, "\n")
 
-	// RESULTS SECTION
+	// RESULTS SECTION — pass remaining height so results don't overflow
+	remainingLines := m.height - headerLines - footerHeight - 1
 	var resultsContent string
 	if m.selectedTab == 1 {
-		resultsContent = m.renderHMResults()
+		resultsContent = m.renderHMResults(remainingLines)
 	} else {
-		resultsContent = m.renderResults()
+		resultsContent = m.renderResults(remainingLines)
 	}
 
 	// FOOTER SECTION (fixed at bottom)
@@ -207,8 +209,8 @@ func (m Model) renderSearchView() string {
 	return mainAndResults + "\n" + footerContent
 }
 
-// renderResults renders the search results
-func (m Model) renderResults() string {
+// renderResults renders the search results within the given line budget
+func (m Model) renderResults(availHeight int) string {
 	var content strings.Builder
 
 	// Loading indicator with spinner
@@ -230,15 +232,10 @@ func (m Model) renderResults() string {
 
 	// Results
 	if len(m.packages) > 0 {
-		// Calculate visible window based on terminal height
-		// Header ~20 lines, footer ~2 lines, each item ~4 lines
-		availableLines := m.height - 24
-		maxVisible := availableLines / 4
+		// Reserve ~4 lines for count header and scroll indicators, each item ~4 lines
+		maxVisible := (availHeight - 4) / 4
 		if maxVisible < 3 {
 			maxVisible = 3
-		}
-		if maxVisible > 10 {
-			maxVisible = 10
 		}
 
 		visibleCount := min(maxVisible, len(m.packages))
@@ -302,7 +299,7 @@ func (m Model) renderPackageItem(index int) string {
 
 	name := styles.PackageNameStyle.Render(pkg.Name)
 	version := styles.VersionStyle.Render(fmt.Sprintf("v%s", pkg.Version))
-	desc := pkg.Description
+	desc := strings.Join(strings.Fields(pkg.Description), " ")
 	maxDescLen := 70
 	if m.width > 100 {
 		maxDescLen = 100
@@ -344,8 +341,8 @@ func (m Model) renderPackageItem(index int) string {
 	return lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(renderedLine) + "\n"
 }
 
-// renderHMResults renders the Home Manager search results
-func (m Model) renderHMResults() string {
+// renderHMResults renders the Home Manager search results within the given line budget
+func (m Model) renderHMResults(availHeight int) string {
 	var content strings.Builder
 
 	// Loading indicator with spinner (during fetch)
@@ -387,14 +384,10 @@ func (m Model) renderHMResults() string {
 
 	// Results
 	if len(m.hmSearchResults) > 0 {
-		// Each HM item ~3 lines, header ~20, footer ~2
-		availableLines := m.height - 24
-		maxVisible := availableLines / 3
+		// Reserve ~4 lines for count header and scroll indicators, each HM item ~3 lines
+		maxVisible := (availHeight - 4) / 3
 		if maxVisible < 3 {
 			maxVisible = 3
-		}
-		if maxVisible > 10 {
-			maxVisible = 10
 		}
 
 		visibleCount := min(maxVisible, len(m.hmSearchResults))
@@ -458,7 +451,8 @@ func (m Model) renderHMOptionItem(index int) string {
 	name := styles.PackageNameStyle.Render(opt.Name)
 	typeStr := styles.VersionStyle.Render(opt.Type)
 
-	desc := opt.Description
+	// Collapse newlines and trim to single line
+	desc := strings.Join(strings.Fields(opt.Description), " ")
 	maxDescLen := 70
 	if m.width > 100 {
 		maxDescLen = 100
