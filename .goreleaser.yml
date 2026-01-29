@@ -1,0 +1,28 @@
+project_name: ns-tui
+
+builds:
+  - id: ns-tui
+    main: ./cmd/ns-tui
+    binary: ns-tui
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - format: tar.gz
+    builds:
+      - ns-tui
+    name_template: >-
+      {{ .ProjectName }}_
+      {{ .Version }}_
+      {{ .Os }}_
+      {{ .Arch }}
+
+release:
+  github:
+    owner: briheet
+    name: ns-tui
