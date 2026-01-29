@@ -11,7 +11,7 @@
 <span style="color: #6c7086;">..::::..:::......:::::::::::::::..::::::.......:::.....::</span>
 </pre>
 
-### **The fastest way to discover & install NixOS packages**
+### **The fastest way to discover & install Nixpkgs, Home manager options**
 
 *Search, explore, and copy install commands in seconds — all from your terminal*
 
