@@ -30,14 +30,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Don't process other keys when help is shown
-		if m.showHelp {
+		// Close tab message with esc or enter
+		if m.showTabMessage && (msg.String() == "esc" || msg.String() == "enter") {
+			m.showTabMessage = false
+			return m, nil
+		}
+
+		// Don't process other keys when help or tab message is shown
+		if m.showHelp || m.showTabMessage {
 			return m, nil
 		}
 
 		// Handle detail mode separately
 		if m.mode == models.DetailMode {
 			return m.handleDetailModeKeys(msg)
+		}
+
+		// Handle tab cycling in search view (not in detail mode)
+		if msg.String() == "tab" {
+			m.selectedTab = (m.selectedTab + 1) % 3
+			if m.selectedTab != 0 {
+				m.showTabMessage = true
+			}
+			return m, nil
+		}
+		if msg.String() == "shift+tab" {
+			m.selectedTab = (m.selectedTab - 1 + 3) % 3
+			if m.selectedTab != 0 {
+				m.showTabMessage = true
+			}
+			return m, nil
 		}
 
 		// Handle keys based on mode

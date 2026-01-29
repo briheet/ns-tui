@@ -32,6 +32,8 @@ type Model struct {
 	toastMessage         string
 	toastVisible         bool
 	showHelp             bool
+	selectedTab          int  // 0=Nixpkgs, 1=Home Manager, 2=Pacman
+	showTabMessage       bool // Show "under development" message
 }
 
 // NewModel creates a new application model
@@ -57,6 +59,8 @@ func NewModel() Model {
 		spinner:   s,
 		toastVisible: false,
 		showHelp:  false,
+		selectedTab: 0,
+		showTabMessage: false,
 	}
 }
 

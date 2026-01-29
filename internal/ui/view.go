@@ -18,6 +18,11 @@ func (m Model) View() string {
 		return m.renderHelpOverlay()
 	}
 
+	// Show tab message overlay
+	if m.showTabMessage {
+		return m.renderTabMessageOverlay()
+	}
+
 	// Show detailed package view
 	if m.mode == models.DetailMode && m.selectedPackage != nil {
 		return m.renderDetailView()
@@ -60,6 +65,35 @@ func (m Model) renderSearchView() string {
 
 	subtitle := styles.SubtitleStyle.Render("Real-time package discovery with fuzzy search")
 	s.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(subtitle))
+	s.WriteString("\n\n")
+
+	// Tabs for package sources
+	activeTabStyle := lipgloss.NewStyle().
+		Foreground(styles.ColorPurple).
+		Background(lipgloss.Color("235")).
+		Bold(true).
+		Padding(0, 2)
+
+	inactiveTabStyle := lipgloss.NewStyle().
+		Foreground(styles.ColorGray).
+		Padding(0, 2)
+
+	tabNames := []string{"Nixpkgs", "Home Manager", "Pacman"}
+	var tabParts []string
+
+	for i, name := range tabNames {
+		if i > 0 {
+			tabParts = append(tabParts, lipgloss.NewStyle().Foreground(styles.ColorGray).Render("│"))
+		}
+		if i == m.selectedTab {
+			tabParts = append(tabParts, activeTabStyle.Render(name))
+		} else {
+			tabParts = append(tabParts, inactiveTabStyle.Render(name))
+		}
+	}
+
+	tabs := lipgloss.JoinHorizontal(lipgloss.Top, tabParts...)
+	s.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(tabs))
 	s.WriteString("\n\n")
 
 	// Search box with mode indicator - centered and fixed position
@@ -678,4 +712,55 @@ func (m Model) renderHelpOverlay() string {
 		Height(m.height).
 		Align(lipgloss.Center, lipgloss.Center).
 		Render(helpBox)
+}
+
+// renderTabMessageOverlay renders the "under development" message for non-Nixpkgs tabs
+func (m Model) renderTabMessageOverlay() string {
+	tabNames := []string{"Nixpkgs", "Home Manager", "Pacman"}
+	selectedTabName := tabNames[m.selectedTab]
+
+	title := lipgloss.NewStyle().
+		Foreground(styles.ColorYellow).
+		Bold(true).
+		Align(lipgloss.Center).
+		Render("⚠  UNDER DEVELOPMENT")
+
+	message := lipgloss.NewStyle().
+		Foreground(styles.ColorWhite).
+		Align(lipgloss.Center).
+		Width(50).
+		Render(fmt.Sprintf("The %s package source is currently under development and not yet available.", selectedTabName))
+
+	info := lipgloss.NewStyle().
+		Foreground(styles.ColorGray).
+		Italic(true).
+		Align(lipgloss.Center).
+		Render("This feature will be implemented in a future release.")
+
+	footer := lipgloss.NewStyle().
+		Foreground(styles.ColorGray).
+		Italic(true).
+		Align(lipgloss.Center).
+		Render("\nPress Enter or Esc to continue")
+
+	var content strings.Builder
+	content.WriteString(title + "\n\n")
+	content.WriteString(message + "\n\n")
+	content.WriteString(info)
+	content.WriteString(footer)
+
+	// Create box
+	messageBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(styles.ColorYellow).
+		Padding(2, 4).
+		Width(60).
+		Render(content.String())
+
+	// Center on screen
+	return lipgloss.NewStyle().
+		Width(m.width).
+		Height(m.height).
+		Align(lipgloss.Center, lipgloss.Center).
+		Render(messageBox)
 }
