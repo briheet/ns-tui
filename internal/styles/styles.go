@@ -39,10 +39,10 @@ var (
 // Search box styles
 var (
 	SearchBoxStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(ColorPinkLight).
-			Padding(0, 1).
-			Width(70)
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(ColorPinkLight).
+		Padding(0, 1).
+		Width(70)
 )
 
 // Mode indicator styles

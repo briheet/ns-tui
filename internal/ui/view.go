@@ -519,7 +519,7 @@ func (m Model) renderDetailView() string {
 
 	// Center the installation layout
 	centeredInstallLayout := lipgloss.NewStyle().
-		Width(boxWidth - 4).  // Account for box padding
+		Width(boxWidth - 4). // Account for box padding
 		Align(lipgloss.Center).
 		Render(installLayout)
 

@@ -34,4 +34,3 @@ func stripHTML(html string) string {
 
 	return text
 }
-
