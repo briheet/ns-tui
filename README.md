@@ -30,18 +30,18 @@
 
 </div>
 
-## ✨ Why ns-tui?
+## Why ns-tui?
 
 Stop switching between browser tabs and terminal windows. **ns-tui** brings the entire NixOS package ecosystem to your fingertips with:
 
-- **⚡ Instant fuzzy search** — typos? No problem. "lezygit" finds "lazygit"
-- **🎯 Zero context switching** — search, explore, and install without leaving your terminal
-- **⌨️ Vim keybindings** — navigate like a pro with familiar j/k motions
-- **📋 One-click copying** — choose from 4 install methods, hit Enter, done
-- **🎨 Beautiful UI** — Catppuccin theme that's easy on the eyes
-- **💨 Blazing fast** — real-time results powered by official NixOS search
+- **Instant fuzzy search** — typos? No problem. "lezygit" finds "lazygit"
+- **Zero context switching** — search, explore, and install without leaving your terminal
+- **Vim keybindings** — navigate like a pro with familiar j/k motions
+- **One-click copying** — choose from 4 install methods, hit Enter, done
+- **Beautiful UI** — Catppuccin theme that's easy on the eyes
+- **Blazing fast** — real-time results powered by official NixOS search
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Option 1: Download Pre-built Binary (Easiest)
 
@@ -66,7 +66,7 @@ ns-tui
 
 **That's it.** Start typing to search, press `?` for help.
 
-## 💡 How to use
+## How to use
 
 1. **Type** to search packages (fuzzy matching enabled)
 2. **Navigate** with `j`/`k` or arrow keys
@@ -76,14 +76,14 @@ ns-tui
 
 **Pro tip:** Press `?` anytime for the complete keybindings guide.
 
-## 🎯 Perfect for
+## Perfect for
 
 - **NixOS beginners** who want to discover packages easily
 - **Power users** who prefer terminal workflows
 - **Anyone tired** of slow browser-based package search
 - **Developers** who value speed and efficiency
 
-## 🛠️ Installation Methods
+## Installation Methods
 
 <details>
 <summary><b>Pre-built Binaries</b> (recommended)</summary>
@@ -135,25 +135,19 @@ go build -o bin/ns-tui ./cmd/ns-tui
 ```
 </details>
 
-## 🎨 Features at a Glance
+## Features at a Glance
 
 | Feature | Description |
 |---------|-------------|
-| 🔍 **Fuzzy Search** | Smart search that handles typos and partial matches |
-| 📦 **Rich Details** | See version, description, programs, and platform support |
-| ⌨️ **Vim Bindings** | Modal interface (Insert/Normal/Detail modes) |
-| 💬 **Live Feedback** | Toast notifications, loading spinners, package counters |
-| 🎯 **4 Install Methods** | nix-shell, NixOS config, nix-env, nix profile |
-| 🌐 **Official Data** | Powered by search.nixos.org backend |
-| 📱 **Responsive** | Adapts to your terminal size |
+| **Fuzzy Search** | Smart search that handles typos and partial matches |
+| **Rich Details** | See version, description, programs, and platform support |
+| **Vim Bindings** | Modal interface (Insert/Normal/Detail modes) |
+| **Live Feedback** | Toast notifications, loading spinners, package counters |
+| **4 Install Methods** | nix-shell, NixOS config, nix-env, nix profile |
+| **Official Data** | Powered by search.nixos.org backend |
+| **Responsive** | Adapts to your terminal size |
 
-## ⭐ Love ns-tui?
-
-- **Star this repo** to show your support
-- **Share with friends** who use NixOS
-- **Contribute** — PRs welcome!
-
-## 📄 License
+## License
 
 MIT License - see [LICENSE](LICENSE) for details.
 
