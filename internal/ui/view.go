@@ -33,10 +33,15 @@ func (m Model) View() string {
 
 // renderSearchView renders the main search view
 func (m Model) renderSearchView() string {
-	var s strings.Builder
+	// Calculate heights
+	footerHeight := 1 // help bar
+	if m.toastVisible {
+		footerHeight = 2 // toast + help bar
+	}
 
-	// Add top margin
-	s.WriteString("\n")
+	// HEADER SECTION
+	var header strings.Builder
+	header.WriteString("\n")
 
 	// ASCII Banner
 	bannerStyle := lipgloss.NewStyle().Foreground(styles.ColorBlue).Bold(true)
@@ -54,20 +59,19 @@ func (m Model) renderSearchView() string {
 
 	for _, line := range bannerLines {
 		styledLine := bannerStyle.Render(line)
-		s.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(styledLine))
-		s.WriteString("\n")
+		header.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(styledLine))
+		header.WriteString("\n")
 	}
 
-	// Last line with dots in gray
 	dotsLine := bannerGrayStyle.Render("..::::..:::......:::::::::::::::..::::::.......:::.....::")
-	s.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(dotsLine))
-	s.WriteString("\n\n")
+	header.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(dotsLine))
+	header.WriteString("\n\n")
 
 	subtitle := styles.SubtitleStyle.Render("Real-time package discovery with fuzzy search")
-	s.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(subtitle))
-	s.WriteString("\n\n")
+	header.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(subtitle))
+	header.WriteString("\n\n")
 
-	// Tabs for package sources
+	// Tabs
 	activeTabStyle := lipgloss.NewStyle().
 		Foreground(styles.ColorPurple).
 		Background(lipgloss.Color("235")).
@@ -93,10 +97,10 @@ func (m Model) renderSearchView() string {
 	}
 
 	tabs := lipgloss.JoinHorizontal(lipgloss.Top, tabParts...)
-	s.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(tabs))
-	s.WriteString("\n\n")
+	header.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(tabs))
+	header.WriteString("\n\n")
 
-	// Search box with mode indicator - centered and fixed position
+	// Search box with mode indicator
 	var modeIndicator string
 	if m.mode == models.InsertMode {
 		modeIndicator = styles.InsertModeStyle.Render("-- INSERT --")
@@ -104,7 +108,6 @@ func (m Model) renderSearchView() string {
 		modeIndicator = styles.NormalModeStyle.Render("-- NORMAL --")
 	}
 
-	// Add position indicator if we have packages
 	if len(m.packages) > 0 {
 		position := lipgloss.NewStyle().
 			Foreground(styles.ColorGray).
@@ -113,42 +116,66 @@ func (m Model) renderSearchView() string {
 	}
 
 	searchBox := styles.SearchBoxStyle.Render(m.textInput.View())
-	s.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(searchBox))
-	s.WriteString("\n")
-	s.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(modeIndicator))
-	s.WriteString("\n")
+	header.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(searchBox))
+	header.WriteString("\n")
+	header.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(modeIndicator))
+	header.WriteString("\n")
 
-	// Separator line
 	separator := styles.SeparatorStyle.Render(strings.Repeat("─", min(m.width, 80)))
-	s.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(separator))
-	s.WriteString("\n\n")
+	header.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(separator))
+	header.WriteString("\n\n")
 
-	// Results area - starts here and scrolls
-	s.WriteString(m.renderResults())
+	headerContent := header.String()
 
-	// Toast notification
+	// RESULTS SECTION
+	resultsContent := m.renderResults()
+
+	// FOOTER SECTION (fixed at bottom)
+	var footer strings.Builder
+
+	// Toast (if visible)
 	if m.toastVisible {
-		s.WriteString("\n")
 		toastStyle := lipgloss.NewStyle().
 			Foreground(styles.ColorGreen).
 			Background(lipgloss.Color("236")).
 			Padding(0, 2).
 			Bold(true)
 		toast := toastStyle.Render(m.toastMessage)
-		s.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(toast))
+		footer.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(toast))
+		footer.WriteString("\n")
 	}
 
-	// Help based on mode
-	s.WriteString("\n")
-	var help string
+	// Help bar
+	var helpText string
 	if m.mode == models.InsertMode {
-		help = styles.HelpStyle.Render("esc: normal mode • ↑/↓: navigate • ?: help • q/ctrl+c: quit")
+		helpText = "esc: normal mode • ↑/↓: navigate • tab: switch source • ?: help • q/ctrl+c: quit"
 	} else {
-		help = styles.HelpStyle.Render("i: insert mode • j/k: navigate • enter: details • g/G: top/bottom • ?: help • q: quit")
+		helpText = "i: insert mode • j/k: navigate • enter: details • g/G: top/bottom • tab: switch source • ?: help • q: quit"
 	}
-	s.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(help))
+	help := styles.HelpStyle.Render(helpText)
+	footer.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(help))
 
-	return s.String()
+	footerContent := footer.String()
+
+	// COMBINE ALL SECTIONS
+	// Use lipgloss.Place to position footer at bottom
+	mainAndResults := headerContent + resultsContent
+
+	// Calculate how much space we need to fill to push footer to bottom
+	// Count lines in mainAndResults
+	mainLines := strings.Count(mainAndResults, "\n")
+	footerLines := footerHeight
+
+	// Fill remaining space
+	availableHeight := m.height - footerLines - 1
+	if mainLines < availableHeight {
+		padding := availableHeight - mainLines
+		for i := 0; i < padding; i++ {
+			mainAndResults += "\n"
+		}
+	}
+
+	return mainAndResults + "\n" + footerContent
 }
 
 // renderResults renders the search results
@@ -251,7 +278,27 @@ func (m Model) renderPackageItem(index int) string {
 	}
 	desc = styles.DescriptionStyle.Render(desc)
 
-	line := fmt.Sprintf("%s%s %s\n     %s", cursor, name, version, desc)
+	// Build line with name, version, and description
+	var line string
+	if len(pkg.Programs) > 0 {
+		// Format programs list
+		programsStyle := lipgloss.NewStyle().Foreground(styles.ColorTeal).Faint(true)
+		var programsList []string
+		maxPrograms := 5 // Show max 5 programs
+		for i, prog := range pkg.Programs {
+			if i >= maxPrograms {
+				programsList = append(programsList, fmt.Sprintf("+%d more", len(pkg.Programs)-maxPrograms))
+				break
+			}
+			if progStr, ok := prog.(string); ok {
+				programsList = append(programsList, progStr)
+			}
+		}
+		programsText := programsStyle.Render("📦 " + strings.Join(programsList, ", "))
+		line = fmt.Sprintf("%s%s %s\n     %s\n     %s", cursor, name, version, desc, programsText)
+	} else {
+		line = fmt.Sprintf("%s%s %s\n     %s", cursor, name, version, desc)
+	}
 
 	var renderedLine string
 	if m.cursor == index {
