@@ -65,6 +65,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		case "enter":
+			if m.mode == models.InsertMode {
+				// Switch from Insert to Normal mode
+				m.mode = models.NormalMode
+				m.textInput.Blur()
+				return m, nil
+			}
 			if m.mode == models.NormalMode && len(m.packages) > 0 {
 				m.mode = models.DetailMode
 				m.selectedPackage = &m.packages[m.cursor]
