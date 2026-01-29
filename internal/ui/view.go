@@ -41,7 +41,7 @@ func (m Model) renderSearchView() string {
 
 	// HEADER SECTION
 	var header strings.Builder
-	header.WriteString("\n")
+	header.WriteString("\n\n\n")
 
 	// ASCII Banner
 	bannerStyle := lipgloss.NewStyle().Foreground(styles.ColorBlue).Bold(true)
