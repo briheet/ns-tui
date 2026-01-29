@@ -28,6 +28,11 @@ func (m Model) View() string {
 		return m.renderTabMessageOverlay()
 	}
 
+	// Show detailed HM option view
+	if m.mode == models.DetailMode && m.selectedHMOption != nil {
+		return m.renderHMDetailView()
+	}
+
 	// Show detailed package view
 	if m.mode == models.DetailMode && m.selectedPackage != nil {
 		return m.renderDetailView()
@@ -225,10 +230,15 @@ func (m Model) renderResults() string {
 
 	// Results
 	if len(m.packages) > 0 {
-		// Calculate visible window first
-		maxVisible := 8
-		if m.height > 20 {
-			maxVisible = 12
+		// Calculate visible window based on terminal height
+		// Header ~20 lines, footer ~2 lines, each item ~4 lines
+		availableLines := m.height - 24
+		maxVisible := availableLines / 4
+		if maxVisible < 3 {
+			maxVisible = 3
+		}
+		if maxVisible > 10 {
+			maxVisible = 10
 		}
 
 		visibleCount := min(maxVisible, len(m.packages))
@@ -377,9 +387,14 @@ func (m Model) renderHMResults() string {
 
 	// Results
 	if len(m.hmSearchResults) > 0 {
-		maxVisible := 8
-		if m.height > 20 {
-			maxVisible = 12
+		// Each HM item ~3 lines, header ~20, footer ~2
+		availableLines := m.height - 24
+		maxVisible := availableLines / 3
+		if maxVisible < 3 {
+			maxVisible = 3
+		}
+		if maxVisible > 10 {
+			maxVisible = 10
 		}
 
 		visibleCount := min(maxVisible, len(m.hmSearchResults))
@@ -531,6 +546,200 @@ func (m Model) renderHMPromptOverlay() string {
 		Height(m.height).
 		Align(lipgloss.Center, lipgloss.Center).
 		Render(promptBox)
+}
+
+// renderHMDetailView renders the detailed Home Manager option view
+func (m Model) renderHMDetailView() string {
+	var content strings.Builder
+	opt := m.selectedHMOption
+
+	// Calculate responsive box width (same as Nixpkgs detail)
+	boxWidth := int(float64(m.width) * 0.9)
+	if boxWidth > 160 {
+		boxWidth = 160
+	}
+	centerStyle := lipgloss.NewStyle().Width(boxWidth - 4).Align(lipgloss.Center)
+
+	// 1. Breadcrumb from loc
+	breadcrumb := buildBreadcrumb(opt.Loc)
+	content.WriteString(centerStyle.Render(breadcrumb))
+	content.WriteString("\n\n")
+
+	// 2. Type
+	typeLine := styles.DetailLabelStyle.Render("Type: ") + styles.DetailValueStyle.Render(opt.Type)
+	content.WriteString(typeLine)
+	content.WriteString("\n")
+
+	// 3. Read-only (only show if true)
+	if opt.ReadOnly {
+		roLine := styles.DetailLabelStyle.Render("Read Only: ") +
+			lipgloss.NewStyle().Foreground(styles.ColorYellow).Render("Yes")
+		content.WriteString(roLine)
+		content.WriteString("\n")
+	}
+	content.WriteString("\n")
+
+	// 4. Description
+	if opt.Description != "" {
+		content.WriteString(styles.DetailLabelStyle.Render("Description:"))
+		content.WriteString("\n")
+		wrapped := wrapText(strings.TrimSpace(opt.Description), boxWidth-8)
+		content.WriteString(styles.DetailValueStyle.Render(wrapped))
+		content.WriteString("\n\n")
+	}
+
+	// 5. Default value
+	if opt.Default != nil {
+		defLine := styles.DetailLabelStyle.Render("Default: ") + styles.DetailValueStyle.Render(*opt.Default)
+		content.WriteString(defLine)
+		content.WriteString("\n\n")
+	}
+
+	// 6. Example value
+	if opt.Example != nil {
+		exLine := styles.DetailLabelStyle.Render("Example: ") + styles.DetailValueStyle.Render(*opt.Example)
+		content.WriteString(exLine)
+		content.WriteString("\n\n")
+	}
+
+	// 7. Declarations / source links
+	if len(opt.Declarations) > 0 {
+		content.WriteString(styles.DetailLabelStyle.Render("Declared in:"))
+		content.WriteString("\n")
+		urlStyle := lipgloss.NewStyle().Foreground(styles.ColorBlue)
+		for _, decl := range opt.Declarations {
+			content.WriteString("  " + styles.DetailValueStyle.Render(decl.Name))
+			if decl.URL != "" {
+				content.WriteString("\n  " + urlStyle.Render(decl.URL))
+			}
+			content.WriteString("\n")
+		}
+		content.WriteString("\n")
+	}
+
+	// 8. Related options section
+	if len(m.hmRelatedOptions) > 0 {
+		parentPath := strings.Join(opt.Loc[:len(opt.Loc)-1], ".")
+		separatorLabel := fmt.Sprintf(" Related Options (%s.*) ", parentPath)
+		lineLen := boxWidth - 8 - len(separatorLabel)
+		leftLine := strings.Repeat("─", 2)
+		rightLine := ""
+		if lineLen > 2 {
+			rightLine = strings.Repeat("─", lineLen-2)
+		}
+		separator := styles.SeparatorStyle.Render(leftLine + separatorLabel + rightLine)
+		content.WriteString(separator)
+		content.WriteString("\n\n")
+
+		maxVisible := 8
+		if m.height > 30 {
+			maxVisible = 12
+		}
+
+		// Ensure cursor is in view
+		hmRelScroll := m.hmRelatedScrollOffset
+		if m.hmRelatedCursor < hmRelScroll {
+			hmRelScroll = m.hmRelatedCursor
+		}
+		if m.hmRelatedCursor >= hmRelScroll+maxVisible {
+			hmRelScroll = m.hmRelatedCursor - maxVisible + 1
+		}
+
+		start := hmRelScroll
+		end := min(start+maxVisible, len(m.hmRelatedOptions))
+
+		for i := start; i < end; i++ {
+			rel := m.hmRelatedOptions[i]
+			cursor := "  "
+			if m.hmRelatedCursor == i {
+				cursor = "▶ "
+			}
+
+			nameStyled := styles.PackageNameStyle.Render(rel.Name)
+			typeStyled := styles.VersionStyle.Render(rel.Type)
+
+			// Truncate description for the related item
+			desc := rel.Description
+			maxDescLen := 60
+			if m.width > 100 {
+				maxDescLen = 90
+			}
+			if len(desc) > maxDescLen {
+				desc = desc[:maxDescLen-3] + "..."
+			}
+			descStyled := styles.DescriptionStyle.Render(desc)
+
+			line := fmt.Sprintf("%s%s  %s\n     %s", cursor, nameStyled, typeStyled, descStyled)
+
+			if m.hmRelatedCursor == i {
+				line = styles.SelectedItemStyle.Render(line)
+			} else {
+				line = styles.ResultItemStyle.Render(line)
+			}
+			content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(boxWidth - 4).Render(line))
+			content.WriteString("\n\n")
+		}
+
+		// Scroll indicators
+		if start > 0 {
+			content.WriteString(lipgloss.NewStyle().Foreground(styles.ColorGray).Render("  More above"))
+			content.WriteString("\n")
+		}
+		if end < len(m.hmRelatedOptions) {
+			content.WriteString(lipgloss.NewStyle().Foreground(styles.ColorGray).
+				Render(fmt.Sprintf("  %d more below", len(m.hmRelatedOptions)-end)))
+			content.WriteString("\n")
+		}
+		content.WriteString("\n")
+	} else {
+		content.WriteString(lipgloss.NewStyle().Foreground(styles.ColorGray).Italic(true).
+			Render("No related options found."))
+		content.WriteString("\n\n")
+	}
+
+	// 9. Help bar
+	helpText := "j/k: navigate related • enter/space: view option • esc/b: back • ?: help • q: quit"
+	help := styles.HelpStyle.Render(helpText)
+	content.WriteString(help)
+
+	// 10. Wrap in box — use most of the screen height
+	boxHeight := m.height - 12
+	if boxHeight < 12 {
+		boxHeight = 12
+	}
+
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(styles.ColorPinkLight).
+		Padding(1, 2).
+		Width(boxWidth).
+		Height(boxHeight)
+
+	box := boxStyle.Render(content.String())
+
+	return lipgloss.NewStyle().
+		Width(m.width).
+		Height(m.height).
+		Align(lipgloss.Center, lipgloss.Center).
+		Render(box)
+}
+
+// buildBreadcrumb renders a styled breadcrumb from loc segments
+func buildBreadcrumb(loc []string) string {
+	if len(loc) == 0 {
+		return ""
+	}
+	segmentStyle := lipgloss.NewStyle().Foreground(styles.ColorCyan).Bold(true)
+	separatorStyle := lipgloss.NewStyle().Foreground(styles.ColorGray)
+
+	var parts []string
+	for i, seg := range loc {
+		parts = append(parts, segmentStyle.Render(seg))
+		if i < len(loc)-1 {
+			parts = append(parts, separatorStyle.Render(" > "))
+		}
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top, parts...)
 }
 
 // renderDetailView renders the detailed package view
@@ -755,11 +964,17 @@ func (m Model) renderDetailView() string {
 	content.WriteString(help)
 
 	// Wrap in a box with dynamic width
+	nixBoxHeight := m.height - 12
+	if nixBoxHeight < 12 {
+		nixBoxHeight = 12
+	}
+
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.ColorPinkLight).
-		Padding(3, 2).
-		Width(boxWidth)
+		Padding(1, 2).
+		Width(boxWidth).
+		Height(nixBoxHeight)
 
 	box := boxStyle.Render(content.String())
 

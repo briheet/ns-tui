@@ -165,14 +165,50 @@ func parseHMValue(raw *json.RawMessage) *string {
 	return &text
 }
 
-// Search performs case-insensitive substring matching on option names and descriptions.
-// Returns up to limit results, scored: exact > prefix > name-contains > description-only.
+// FindSiblings returns all options that share the same parent path as the target,
+// excluding the target itself. For example, siblings of "programs.git.enable"
+// are all options whose loc starts with ["programs","git"] and has exactly 3 segments.
+func FindSiblings(allOptions []models.HMOption, target models.HMOption) []models.HMOption {
+	if len(target.Loc) < 2 {
+		return nil
+	}
+
+	parentLoc := target.Loc[:len(target.Loc)-1]
+	parentDepth := len(parentLoc)
+
+	var siblings []models.HMOption
+	for _, opt := range allOptions {
+		if len(opt.Loc) != parentDepth+1 {
+			continue
+		}
+		match := true
+		for i := 0; i < parentDepth; i++ {
+			if opt.Loc[i] != parentLoc[i] {
+				match = false
+				break
+			}
+		}
+		if !match || opt.Name == target.Name {
+			continue
+		}
+		siblings = append(siblings, opt)
+	}
+	return siblings
+}
+
+// Search performs case-insensitive matching on option names and descriptions.
+// Supports multi-word queries: "programs git" matches "programs.git.enable".
+// Scoring: exact > prefix > segment match > substring > description-only.
 func Search(options []models.HMOption, query string, limit int) []models.HMOption {
 	if query == "" {
 		return nil
 	}
 
-	lowerQuery := strings.ToLower(query)
+	lowerQuery := strings.ToLower(strings.TrimSpace(query))
+	terms := strings.Fields(lowerQuery)
+	if len(terms) == 0 {
+		return nil
+	}
 
 	type scored struct {
 		opt   models.HMOption
@@ -184,16 +220,48 @@ func Search(options []models.HMOption, query string, limit int) []models.HMOptio
 		lowerName := strings.ToLower(opt.Name)
 		lowerDesc := strings.ToLower(opt.Description)
 
-		nameMatch := strings.Contains(lowerName, lowerQuery)
-		descMatch := strings.Contains(lowerDesc, lowerQuery)
+		// Split name into dot-separated segments for segment matching
+		segments := strings.Split(lowerName, ".")
 
-		if !nameMatch && !descMatch {
+		// All terms must match in either name or description
+		allMatch := true
+		nameMatchAll := true
+		segmentMatchAll := true
+		for _, term := range terms {
+			inName := strings.Contains(lowerName, term)
+			inDesc := strings.Contains(lowerDesc, term)
+			if !inName && !inDesc {
+				allMatch = false
+				break
+			}
+			if !inName {
+				nameMatchAll = false
+				segmentMatchAll = false
+				continue
+			}
+			// Check if term matches a segment exactly
+			segMatch := false
+			for _, seg := range segments {
+				if seg == term {
+					segMatch = true
+					break
+				}
+			}
+			if !segMatch {
+				segmentMatchAll = false
+			}
+		}
+
+		if !allMatch {
 			continue
 		}
 
 		score := 100 // description-only match
-		if nameMatch {
-			score = 10 // name contains
+		if nameMatchAll {
+			score = 10 // all terms found in name as substrings
+			if segmentMatchAll {
+				score = 5 // all terms match exact dot-separated segments
+			}
 			if strings.HasPrefix(lowerName, lowerQuery) {
 				score = 1 // prefix match
 			}

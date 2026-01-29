@@ -13,6 +13,14 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// hmDetailEntry stores one level of the HM detail navigation stack
+type hmDetailEntry struct {
+	option       models.HMOption
+	related      []models.HMOption
+	cursor       int
+	scrollOffset int
+}
+
 // Model represents the application state
 type Model struct {
 	textInput             textinput.Model
@@ -46,6 +54,12 @@ type Model struct {
 	hmScrollOffset    int               // Scroll offset for HM results
 	hmLastQuery       string            // Last HM search query
 	hmErr             error             // HM-specific error
+	// Home Manager detail state
+	selectedHMOption      *models.HMOption  // Currently viewed HM option
+	hmDetailHistory       []hmDetailEntry   // Navigation stack for back-traversal
+	hmRelatedOptions      []models.HMOption // Sibling options for current selection
+	hmRelatedCursor       int              // Cursor in related options list
+	hmRelatedScrollOffset int              // Scroll offset for related options
 }
 
 // NewModel creates a new application model

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/briheet/ns-tui/internal/hm"
 	"github.com/briheet/ns-tui/internal/models"
 
 	"github.com/atotto/clipboard"
@@ -163,7 +164,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.selectedPackage = &m.packages[m.cursor]
 					return m, nil
 				}
-				// HM detail mode not implemented yet — no-op
+				if m.selectedTab == 1 && len(m.hmSearchResults) > 0 {
+					selected := m.hmSearchResults[m.hmCursor]
+					m.selectedHMOption = &selected
+					m.hmRelatedOptions = hm.FindSiblings(m.hmOptions, selected)
+					m.hmRelatedCursor = 0
+					m.hmRelatedScrollOffset = 0
+					m.hmDetailHistory = nil
+					m.mode = models.DetailMode
+					return m, nil
+				}
 			}
 		case "down":
 			if m.mode == models.InsertMode {
@@ -366,6 +376,11 @@ func (m Model) copyInstallCommand() tea.Cmd {
 
 // handleDetailModeKeys handles key presses in detail mode
 func (m Model) handleDetailModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Route to HM detail handler if viewing an HM option
+	if m.selectedHMOption != nil {
+		return m.handleHMDetailModeKeys(msg)
+	}
+
 	switch msg.String() {
 	case "ctrl+c", "q":
 		return m, tea.Quit
@@ -385,6 +400,77 @@ func (m Model) handleDetailModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter", " ":
 		// Copy the selected installation command to clipboard
 		return m, m.copyInstallCommand()
+	}
+	return m, nil
+}
+
+// handleHMDetailModeKeys handles key presses in the HM option detail view
+func (m Model) handleHMDetailModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c", "q":
+		return m, tea.Quit
+
+	case "esc", "backspace", "b":
+		// Pop navigation stack
+		if len(m.hmDetailHistory) > 0 {
+			last := m.hmDetailHistory[len(m.hmDetailHistory)-1]
+			m.hmDetailHistory = m.hmDetailHistory[:len(m.hmDetailHistory)-1]
+			opt := last.option
+			m.selectedHMOption = &opt
+			m.hmRelatedOptions = last.related
+			m.hmRelatedCursor = last.cursor
+			m.hmRelatedScrollOffset = last.scrollOffset
+		} else {
+			// Stack empty — return to search results
+			m.mode = models.NormalMode
+			m.selectedHMOption = nil
+			m.hmRelatedOptions = nil
+			m.hmRelatedCursor = 0
+			m.hmRelatedScrollOffset = 0
+		}
+		return m, nil
+
+	case "j", "down":
+		if len(m.hmRelatedOptions) > 0 && m.hmRelatedCursor < len(m.hmRelatedOptions)-1 {
+			m.hmRelatedCursor++
+		}
+		return m, nil
+
+	case "k", "up":
+		if m.hmRelatedCursor > 0 {
+			m.hmRelatedCursor--
+		}
+		return m, nil
+
+	case "g":
+		m.hmRelatedCursor = 0
+		m.hmRelatedScrollOffset = 0
+		return m, nil
+
+	case "G":
+		if len(m.hmRelatedOptions) > 0 {
+			m.hmRelatedCursor = len(m.hmRelatedOptions) - 1
+		}
+		return m, nil
+
+	case "enter", " ":
+		// Drill into the selected related option
+		if len(m.hmRelatedOptions) > 0 {
+			// Push current state onto history stack
+			m.hmDetailHistory = append(m.hmDetailHistory, hmDetailEntry{
+				option:       *m.selectedHMOption,
+				related:      m.hmRelatedOptions,
+				cursor:       m.hmRelatedCursor,
+				scrollOffset: m.hmRelatedScrollOffset,
+			})
+			// Navigate to the selected related option
+			selected := m.hmRelatedOptions[m.hmRelatedCursor]
+			m.selectedHMOption = &selected
+			m.hmRelatedOptions = hm.FindSiblings(m.hmOptions, selected)
+			m.hmRelatedCursor = 0
+			m.hmRelatedScrollOffset = 0
+		}
+		return m, nil
 	}
 	return m, nil
 }
