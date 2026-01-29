@@ -13,6 +13,11 @@ import (
 
 // View renders the UI
 func (m Model) View() string {
+	// Show help overlay
+	if m.showHelp {
+		return m.renderHelpOverlay()
+	}
+
 	// Show detailed package view
 	if m.mode == models.DetailMode && m.selectedPackage != nil {
 		return m.renderDetailView()
@@ -45,6 +50,14 @@ func (m Model) renderSearchView() string {
 		modeIndicator = styles.NormalModeStyle.Render("-- NORMAL --")
 	}
 
+	// Add position indicator if we have packages
+	if len(m.packages) > 0 {
+		position := lipgloss.NewStyle().
+			Foreground(styles.ColorGray).
+			Render(fmt.Sprintf(" [%d/%d]", m.cursor+1, len(m.packages)))
+		modeIndicator = modeIndicator + position
+	}
+
 	searchBox := styles.SearchBoxStyle.Render(m.textInput.View())
 	s.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(searchBox))
 	s.WriteString("\n")
@@ -59,13 +72,25 @@ func (m Model) renderSearchView() string {
 	// Results area - starts here and scrolls
 	s.WriteString(m.renderResults())
 
+	// Toast notification
+	if m.toastVisible {
+		s.WriteString("\n")
+		toastStyle := lipgloss.NewStyle().
+			Foreground(styles.ColorGreen).
+			Background(lipgloss.Color("236")).
+			Padding(0, 2).
+			Bold(true)
+		toast := toastStyle.Render(m.toastMessage)
+		s.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(toast))
+	}
+
 	// Help based on mode
 	s.WriteString("\n")
 	var help string
 	if m.mode == models.InsertMode {
-		help = styles.HelpStyle.Render("esc: normal mode • ↑/↓: navigate • q/ctrl+c: quit")
+		help = styles.HelpStyle.Render("esc: normal mode • ↑/↓: navigate • ?: help • q/ctrl+c: quit")
 	} else {
-		help = styles.HelpStyle.Render("i: insert mode • j/k: navigate • enter: details • g/G: top/bottom • q: quit")
+		help = styles.HelpStyle.Render("i: insert mode • j/k: navigate • enter: details • g/G: top/bottom • ?: help • q: quit")
 	}
 	s.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(help))
 
@@ -76,10 +101,11 @@ func (m Model) renderSearchView() string {
 func (m Model) renderResults() string {
 	var content strings.Builder
 
-	// Loading indicator
+	// Loading indicator with spinner
 	if m.loading {
-		loading := styles.LoadingStyle.Render("🔍 Searching...")
-		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(loading))
+		loading := fmt.Sprintf("%s Searching...", m.spinner.View())
+		loadingStyled := styles.LoadingStyle.Render(loading)
+		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(loadingStyled))
 		content.WriteString("\n")
 		return content.String()
 	}
@@ -94,15 +120,16 @@ func (m Model) renderResults() string {
 
 	// Results
 	if len(m.packages) > 0 {
-		count := styles.CountStyle.Render(fmt.Sprintf("📦 Found %d packages", len(m.packages)))
-		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(count))
-		content.WriteString("\n\n")
-
-		// Calculate visible window
+		// Calculate visible window first
 		maxVisible := 8
 		if m.height > 20 {
 			maxVisible = 12
 		}
+
+		visibleCount := min(maxVisible, len(m.packages))
+		count := styles.CountStyle.Render(fmt.Sprintf("📦 %d packages (showing %d)", len(m.packages), visibleCount))
+		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(count))
+		content.WriteString("\n\n")
 
 		// Ensure cursor is in view
 		if m.cursor < m.scrollOffset {
@@ -369,8 +396,21 @@ func (m Model) renderDetailView() string {
 	content.WriteString("\n  " + strings.ReplaceAll(installLayout, "\n", "\n  "))
 	content.WriteString("\n\n")
 
+	// Toast notification
+	if m.toastVisible {
+		content.WriteString("\n")
+		toastStyle := lipgloss.NewStyle().
+			Foreground(styles.ColorGreen).
+			Background(lipgloss.Color("236")).
+			Padding(0, 2).
+			Bold(true)
+		toast := toastStyle.Render(m.toastMessage)
+		content.WriteString(toast)
+		content.WriteString("\n")
+	}
+
 	// Help
-	help := styles.HelpStyle.Render("tab: cycle methods • enter: copy command • esc/backspace/b: back • q: quit")
+	help := styles.HelpStyle.Render("j/k or tab: cycle methods • enter/space: copy command • esc/b: back • ?: help • q: quit")
 	content.WriteString(help)
 
 	// Wrap in a box
@@ -505,4 +545,117 @@ func isPlatformSupported(platforms []any, currentPlatform string) bool {
 		}
 	}
 	return false
+}
+
+// renderHelpOverlay renders the help overlay modal
+func (m Model) renderHelpOverlay() string {
+	helpTitle := lipgloss.NewStyle().
+		Foreground(styles.ColorPurple).
+		Bold(true).
+		Align(lipgloss.Center).
+		Render("⌨  KEYBINDINGS REFERENCE")
+
+	// Insert Mode section
+	insertModeTitle := lipgloss.NewStyle().
+		Foreground(styles.ColorGreen).
+		Bold(true).
+		Render("INSERT MODE")
+
+	insertModeKeys := []string{
+		"Type           → Search for packages",
+		"↑ / ↓          → Navigate results",
+		"Enter          → Switch to Normal mode",
+		"Esc            → Switch to Normal mode",
+		"q / Ctrl+C     → Quit application",
+	}
+
+	// Normal Mode section
+	normalModeTitle := lipgloss.NewStyle().
+		Foreground(styles.ColorBlue).
+		Bold(true).
+		Render("NORMAL MODE")
+
+	normalModeKeys := []string{
+		"i              → Switch to Insert mode",
+		"j / k          → Move down / up",
+		"g / G          → Jump to top / bottom",
+		"Enter          → View package details",
+		"q / Ctrl+C     → Quit application",
+	}
+
+	// Detail View section
+	detailModeTitle := lipgloss.NewStyle().
+		Foreground(styles.ColorTeal).
+		Bold(true).
+		Render("DETAIL VIEW")
+
+	detailModeKeys := []string{
+		"j / k           → Cycle install methods (down/up)",
+		"Tab / Shift+Tab → Cycle install methods (forward/back)",
+		"Enter / Space   → Copy selected command",
+		"Esc / b         → Back to search",
+		"q / Ctrl+C      → Quit application",
+	}
+
+	// Global keys
+	globalTitle := lipgloss.NewStyle().
+		Foreground(styles.ColorYellow).
+		Bold(true).
+		Render("GLOBAL")
+
+	globalKeys := []string{
+		"?              → Toggle this help",
+		"q / Ctrl+C     → Quit application",
+	}
+
+	// Build content
+	var content strings.Builder
+	content.WriteString(helpTitle + "\n\n")
+
+	content.WriteString(insertModeTitle + "\n")
+	for _, key := range insertModeKeys {
+		content.WriteString("  " + lipgloss.NewStyle().Foreground(styles.ColorWhite).Render(key) + "\n")
+	}
+	content.WriteString("\n")
+
+	content.WriteString(normalModeTitle + "\n")
+	for _, key := range normalModeKeys {
+		content.WriteString("  " + lipgloss.NewStyle().Foreground(styles.ColorWhite).Render(key) + "\n")
+	}
+	content.WriteString("\n")
+
+	content.WriteString(detailModeTitle + "\n")
+	for _, key := range detailModeKeys {
+		content.WriteString("  " + lipgloss.NewStyle().Foreground(styles.ColorWhite).Render(key) + "\n")
+	}
+	content.WriteString("\n")
+
+	content.WriteString(globalTitle + "\n")
+	for _, key := range globalKeys {
+		content.WriteString("  " + lipgloss.NewStyle().Foreground(styles.ColorWhite).Render(key) + "\n")
+	}
+
+	// Footer
+	footer := lipgloss.NewStyle().
+		Foreground(styles.ColorGray).
+		Italic(true).
+		Align(lipgloss.Center).
+		Render("\nPress ? or Esc to close")
+
+	content.WriteString("\n" + footer)
+
+	// Create box
+	helpBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(styles.ColorPurple).
+		Padding(1, 2).
+		Width(60).
+		Render(content.String())
+
+	// Center on screen
+	return lipgloss.NewStyle().
+		Width(m.width).
+		Height(m.height).
+		Align(lipgloss.Center, lipgloss.Center).
+		Render(helpBox)
 }

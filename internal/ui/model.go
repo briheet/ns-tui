@@ -6,8 +6,10 @@ import (
 	"ns-tui/internal/api"
 	"ns-tui/internal/models"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // Model represents the application state
@@ -26,6 +28,10 @@ type Model struct {
 	selectedPackage      *models.Package
 	apiClient            *api.Client
 	selectedInstallMethod int // 0-3 for the 4 install methods
+	spinner              spinner.Model
+	toastMessage         string
+	toastVisible         bool
+	showHelp             bool
 }
 
 // NewModel creates a new application model
@@ -36,6 +42,11 @@ func NewModel() Model {
 	ti.CharLimit = 156
 	ti.Width = 66
 
+	// Initialize spinner
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+
 	return Model{
 		textInput: ti,
 		packages:  []models.Package{},
@@ -43,12 +54,15 @@ func NewModel() Model {
 		loading:   false,
 		mode:      models.InsertMode,
 		apiClient: api.NewClient(),
+		spinner:   s,
+		toastVisible: false,
+		showHelp:  false,
 	}
 }
 
 // Init initializes the model
 func (m Model) Init() tea.Cmd {
-	return textinput.Blink
+	return tea.Batch(textinput.Blink, m.spinner.Tick)
 }
 
 // performSearch executes the search in a goroutine

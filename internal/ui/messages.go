@@ -14,3 +14,6 @@ type clipboardMsg struct {
 	command string
 	err     error
 }
+
+// hideToastMsg is sent when the toast should be hidden
+type hideToastMsg struct{}

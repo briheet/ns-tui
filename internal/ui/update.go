@@ -7,6 +7,7 @@ import (
 	"ns-tui/internal/models"
 
 	"github.com/atotto/clipboard"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -17,6 +18,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Handle help overlay
+		if msg.String() == "?" {
+			m.showHelp = !m.showHelp
+			return m, nil
+		}
+
+		// Close help with esc
+		if m.showHelp && msg.String() == "esc" {
+			m.showHelp = false
+			return m, nil
+		}
+
+		// Don't process other keys when help is shown
+		if m.showHelp {
+			return m, nil
+		}
+
 		// Handle detail mode separately
 		if m.mode == models.DetailMode {
 			return m.handleDetailModeKeys(msg)
@@ -109,9 +127,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case clipboardMsg:
-		// Clipboard operation completed
-		// Could show a message to user if needed
+		// Show toast notification for copy success/failure
+		if msg.success {
+			m.toastMessage = fmt.Sprintf("✓ Copied: %s", msg.command)
+			m.toastVisible = true
+			// Hide toast after 2 seconds
+			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
+				return hideToastMsg{}
+			})
+		} else {
+			m.toastMessage = fmt.Sprintf("✗ Copy failed: %v", msg.err)
+			m.toastVisible = true
+			return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
+				return hideToastMsg{}
+			})
+		}
+
+	case hideToastMsg:
+		m.toastVisible = false
+		m.toastMessage = ""
 		return m, nil
+
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
 	}
 
 	// Update text input only in insert mode
@@ -175,15 +215,15 @@ func (m Model) handleDetailModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.selectedPackage = nil
 		m.selectedInstallMethod = 0 // Reset selection
 		return m, nil
-	case "tab":
+	case "tab", "j":
 		// Cycle through install methods (0-3)
 		m.selectedInstallMethod = (m.selectedInstallMethod + 1) % 4
 		return m, nil
-	case "shift+tab":
+	case "shift+tab", "k":
 		// Cycle backwards
 		m.selectedInstallMethod = (m.selectedInstallMethod - 1 + 4) % 4
 		return m, nil
-	case "enter":
+	case "enter", " ":
 		// Copy the selected installation command to clipboard
 		return m, m.copyInstallCommand()
 	}
