@@ -15,6 +15,7 @@
 
 *Search, explore, and copy install commands in seconds — all from your terminal*
 
+[![Latest Release](https://img.shields.io/github/v/release/briheet/ns-tui?style=flat-square)](https://github.com/briheet/ns-tui/releases/latest)
 [![Built with Bubbletea](https://img.shields.io/badge/Built%20with-Bubbletea-5B8C5A?style=flat-square)](https://github.com/charmbracelet/bubbletea)
 [![Go 1.25+](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat-square&logo=go)](https://go.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
@@ -43,11 +44,19 @@ Stop switching between browser tabs and terminal windows. **ns-tui** brings the 
 
 ## 🚀 Quick Start
 
-```bash
-# Install with Go
-go install github.com/briheet/ns-tui/cmd/ns-tui@latest
+### Option 1: Download Pre-built Binary (Easiest)
 
-# Or run with Nix (no install needed)
+Download the latest release for your platform from [GitHub Releases](https://github.com/briheet/ns-tui/releases/latest):
+
+### Option 2: Install with Go
+
+```bash
+go install github.com/briheet/ns-tui/cmd/ns-tui@latest
+```
+
+### Option 3: Run with Nix
+
+```bash
 nix run github:briheet/ns-tui
 ```
 
@@ -62,7 +71,7 @@ ns-tui
 
 1. **Type** to search packages (fuzzy matching enabled)
 2. **Navigate** with `j`/`k` or arrow keys
-3. **Press Enter** to view package details
+3. **Press Enter or Space** to view package details
 4. **Tab** through install methods
 5. **Space/Enter** to copy the command
 
@@ -78,7 +87,25 @@ ns-tui
 ## 🛠️ Installation Methods
 
 <details>
-<summary><b>Via Go Install</b> (recommended)</summary>
+<summary><b>Pre-built Binaries</b> (recommended)</summary>
+
+Download from [GitHub Releases](https://github.com/briheet/ns-tui/releases/latest) for your platform:
+
+**Available for:**
+- Linux (amd64, arm64)
+- macOS (amd64, arm64)
+- Windows (amd64, arm64)
+
+```bash
+# Example for macOS arm64
+curl -LO https://github.com/briheet/ns-tui/releases/latest/download/ns-tui_<version>_darwin_arm64.tar.gz
+tar -xzf ns-tui_<version>_darwin_arm64.tar.gz
+sudo mv ns-tui /usr/local/bin/
+```
+</details>
+
+<details>
+<summary><b>Via Go Install</b></summary>
 
 ```bash
 go install github.com/briheet/ns-tui/cmd/ns-tui@latest
@@ -134,8 +161,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 ---
 
 <div align="center">
-
-**Made with ❤️ for the NixOS community**
 
 [Report Bug](https://github.com/briheet/ns-tui/issues) · [Request Feature](https://github.com/briheet/ns-tui/issues)
 
