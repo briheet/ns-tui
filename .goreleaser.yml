@@ -16,11 +16,7 @@ archives:
   - format: tar.gz
     builds:
       - ns-tui
-    name_template: >-
-      {{ .ProjectName }}_
-      {{ .Version }}_
-      {{ .Os }}_
-      {{ .Arch }}
+    name_template: "{{ .ProjectName }}_{{ trimprefix .Version \"v\" }}_{{ .Os }}_{{ .Arch }}"
 
 release:
   github:
