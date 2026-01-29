@@ -265,13 +265,13 @@ func (m Model) renderDetailView() string {
 	// Installation Methods Header
 	content.WriteString(styles.DetailLabelStyle.Render(fmt.Sprintf("How to install %s?\n\n", pkg.Name)))
 
-	// Define methods and commands
-	methodNames := []string{"nix-env", "nix profile", "NixOS Config", "nix-shell"}
+	// Define methods and commands - ordered by ease of use
+	methodNames := []string{"nix-shell", "NixOS Config", "nix-env", "nix profile"}
 	commands := []string{
+		fmt.Sprintf("nix-shell -p %s", pkg.AttrName),
+		fmt.Sprintf("environment.systemPackages = [ pkgs.%s ];", pkg.AttrName),
 		fmt.Sprintf("nix-env -iA nixpkgs.%s", pkg.AttrName),
 		fmt.Sprintf("nix profile install nixpkgs#%s", pkg.AttrName),
-		fmt.Sprintf("environment.systemPackages = [ pkgs.%s ];", pkg.AttrName),
-		fmt.Sprintf("nix-shell -p %s", pkg.AttrName),
 	}
 
 	// Build left menu - pad all items to same width for consistency
