@@ -1,4 +1,4 @@
-module ns-tui
+module github.com/briheet/ns-tui
 
 go 1.25.5
 
