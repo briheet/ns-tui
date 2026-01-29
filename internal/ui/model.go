@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/briheet/ns-tui/internal/api"
+	"github.com/briheet/ns-tui/internal/hm"
 	"github.com/briheet/ns-tui/internal/models"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -34,6 +35,17 @@ type Model struct {
 	showHelp              bool
 	selectedTab           int  // 0=Nixpkgs, 1=Home Manager, 2=Pacman
 	showTabMessage        bool // Show "under development" message
+	// Home Manager state
+	hmOptions         []models.HMOption // All loaded HM options
+	hmSearchResults   []models.HMOption // Current HM search results
+	hmLoaded          bool              // Whether HM options are loaded
+	hmLoading         bool              // Whether HM fetch is in progress
+	showHMPrompt      bool              // Show the fetch prompt modal
+	hmPromptSelection int               // 0=Yes, 1=No
+	hmCursor          int               // Cursor for HM results
+	hmScrollOffset    int               // Scroll offset for HM results
+	hmLastQuery       string            // Last HM search query
+	hmErr             error             // HM-specific error
 }
 
 // NewModel creates a new application model
@@ -74,5 +86,32 @@ func performSearch(client *api.Client, query string) tea.Cmd {
 	return func() tea.Msg {
 		packages, err := client.SearchPackages(query)
 		return searchResultMsg{packages: packages, err: err}
+	}
+}
+
+// checkHMCache checks if the HM options cache exists and loads it if so
+func checkHMCache() tea.Cmd {
+	return func() tea.Msg {
+		if !hm.CacheExists() {
+			return hmCacheCheckMsg{exists: false}
+		}
+		options, err := hm.LoadFromCache()
+		return hmCacheCheckMsg{exists: true, options: options, err: err}
+	}
+}
+
+// fetchHMOptions runs nix build and caches the result
+func fetchHMOptions() tea.Cmd {
+	return func() tea.Msg {
+		options, err := hm.FetchAndCache()
+		return hmFetchResultMsg{options: options, err: err}
+	}
+}
+
+// searchHMOptions performs in-memory search over loaded HM options
+func searchHMOptions(options []models.HMOption, query string) tea.Cmd {
+	return func() tea.Msg {
+		results := hm.Search(options, query, 50)
+		return hmSearchResultMsg{results: results}
 	}
 }

@@ -18,6 +18,11 @@ func (m Model) View() string {
 		return m.renderHelpOverlay()
 	}
 
+	// Show HM fetch prompt overlay
+	if m.showHMPrompt {
+		return m.renderHMPromptOverlay()
+	}
+
 	// Show tab message overlay
 	if m.showTabMessage {
 		return m.renderTabMessageOverlay()
@@ -67,7 +72,16 @@ func (m Model) renderSearchView() string {
 	header.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(dotsLine))
 	header.WriteString("\n\n")
 
-	subtitle := styles.SubtitleStyle.Render("Real-time package discovery with fuzzy search")
+	var subtitleText string
+	switch m.selectedTab {
+	case 0:
+		subtitleText = "Real-time package discovery with fuzzy search"
+	case 1:
+		subtitleText = "Search Home Manager configuration options"
+	default:
+		subtitleText = "Real-time package discovery with fuzzy search"
+	}
+	subtitle := styles.SubtitleStyle.Render(subtitleText)
 	header.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(subtitle))
 	header.WriteString("\n\n")
 
@@ -108,10 +122,15 @@ func (m Model) renderSearchView() string {
 		modeIndicator = styles.NormalModeStyle.Render("-- NORMAL --")
 	}
 
-	if len(m.packages) > 0 {
+	if m.selectedTab == 0 && len(m.packages) > 0 {
 		position := lipgloss.NewStyle().
 			Foreground(styles.ColorGray).
 			Render(fmt.Sprintf(" [%d/%d]", m.cursor+1, len(m.packages)))
+		modeIndicator = modeIndicator + position
+	} else if m.selectedTab == 1 && len(m.hmSearchResults) > 0 {
+		position := lipgloss.NewStyle().
+			Foreground(styles.ColorGray).
+			Render(fmt.Sprintf(" [%d/%d]", m.hmCursor+1, len(m.hmSearchResults)))
 		modeIndicator = modeIndicator + position
 	}
 
@@ -128,7 +147,12 @@ func (m Model) renderSearchView() string {
 	headerContent := header.String()
 
 	// RESULTS SECTION
-	resultsContent := m.renderResults()
+	var resultsContent string
+	if m.selectedTab == 1 {
+		resultsContent = m.renderHMResults()
+	} else {
+		resultsContent = m.renderResults()
+	}
 
 	// FOOTER SECTION (fixed at bottom)
 	var footer strings.Builder
@@ -308,6 +332,205 @@ func (m Model) renderPackageItem(index int) string {
 	}
 
 	return lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(renderedLine) + "\n"
+}
+
+// renderHMResults renders the Home Manager search results
+func (m Model) renderHMResults() string {
+	var content strings.Builder
+
+	// Loading indicator with spinner (during fetch)
+	if m.hmLoading {
+		loading := fmt.Sprintf("%s Fetching Home Manager options...", m.spinner.View())
+		loadingStyled := styles.LoadingStyle.Render(loading)
+		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(loadingStyled))
+		content.WriteString("\n")
+		return content.String()
+	}
+
+	// Loading indicator for search
+	if m.loading {
+		loading := fmt.Sprintf("%s Searching...", m.spinner.View())
+		loadingStyled := styles.LoadingStyle.Render(loading)
+		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(loadingStyled))
+		content.WriteString("\n")
+		return content.String()
+	}
+
+	// Error message
+	if m.hmErr != nil {
+		errorMsg := styles.ErrorStyle.Render(fmt.Sprintf("Error: %v", m.hmErr))
+		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(errorMsg))
+		content.WriteString("\n")
+		return content.String()
+	}
+
+	// Not loaded yet (waiting for user action)
+	if !m.hmLoaded {
+		hint := lipgloss.NewStyle().
+			Foreground(styles.ColorGray).
+			Italic(true).
+			Render("Home Manager options not loaded yet.")
+		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(hint))
+		content.WriteString("\n")
+		return content.String()
+	}
+
+	// Results
+	if len(m.hmSearchResults) > 0 {
+		maxVisible := 8
+		if m.height > 20 {
+			maxVisible = 12
+		}
+
+		visibleCount := min(maxVisible, len(m.hmSearchResults))
+		count := styles.CountStyle.Render(fmt.Sprintf("Found %d options (showing %d)", len(m.hmSearchResults), visibleCount))
+		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(count))
+		content.WriteString("\n\n")
+
+		// Ensure cursor is in view
+		if m.hmCursor < m.hmScrollOffset {
+			m.hmScrollOffset = m.hmCursor
+		}
+		if m.hmCursor >= m.hmScrollOffset+maxVisible {
+			m.hmScrollOffset = m.hmCursor - maxVisible + 1
+		}
+
+		start := m.hmScrollOffset
+		end := min(m.hmScrollOffset+maxVisible, len(m.hmSearchResults))
+
+		for i := start; i < end; i++ {
+			content.WriteString(m.renderHMOptionItem(i))
+		}
+
+		// Scroll indicators
+		if m.hmScrollOffset > 0 {
+			scrollUp := lipgloss.NewStyle().Foreground(styles.ColorGray).Render("More above")
+			content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(scrollUp))
+			content.WriteString("\n")
+		}
+		if end < len(m.hmSearchResults) {
+			scrollDown := lipgloss.NewStyle().Foreground(styles.ColorGray).Render(fmt.Sprintf("%d more below", len(m.hmSearchResults)-end))
+			content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(scrollDown))
+			content.WriteString("\n")
+		}
+	} else if m.hmLastQuery != "" {
+		noResults := lipgloss.NewStyle().
+			Foreground(styles.ColorYellow).
+			Render("No options found. Try a different search term.")
+		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(noResults))
+		content.WriteString("\n")
+	} else {
+		hint := lipgloss.NewStyle().
+			Foreground(styles.ColorTeal).
+			Italic(true).
+			Render("Type to search Home Manager options...")
+		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(hint))
+		content.WriteString("\n")
+	}
+
+	return content.String()
+}
+
+// renderHMOptionItem renders a single Home Manager option item
+func (m Model) renderHMOptionItem(index int) string {
+	opt := m.hmSearchResults[index]
+
+	cursor := "  "
+	if m.hmCursor == index {
+		cursor = "▶ "
+	}
+
+	name := styles.PackageNameStyle.Render(opt.Name)
+	typeStr := styles.VersionStyle.Render(opt.Type)
+
+	desc := opt.Description
+	maxDescLen := 70
+	if m.width > 100 {
+		maxDescLen = 100
+	}
+	if len(desc) > maxDescLen {
+		desc = desc[:maxDescLen-3] + "..."
+	}
+	desc = styles.DescriptionStyle.Render(desc)
+
+	line := fmt.Sprintf("%s%s  %s\n     %s", cursor, name, typeStr, desc)
+
+	var renderedLine string
+	if m.hmCursor == index {
+		renderedLine = styles.SelectedItemStyle.Render(line)
+	} else {
+		renderedLine = styles.ResultItemStyle.Render(line)
+	}
+
+	return lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(renderedLine) + "\n"
+}
+
+// renderHMPromptOverlay renders the Home Manager fetch prompt modal
+func (m Model) renderHMPromptOverlay() string {
+	title := lipgloss.NewStyle().
+		Foreground(styles.ColorPurple).
+		Bold(true).
+		Align(lipgloss.Center).
+		Render("HOME MANAGER OPTIONS")
+
+	message := lipgloss.NewStyle().
+		Foreground(styles.ColorWhite).
+		Align(lipgloss.Center).
+		Width(50).
+		Render("Home Manager options have not been fetched yet. This will run `nix build` to download and cache the options JSON locally.")
+
+	info := lipgloss.NewStyle().
+		Foreground(styles.ColorGray).
+		Italic(true).
+		Align(lipgloss.Center).
+		Render("This may take a minute on first run.")
+
+	// Yes / No buttons
+	yesStyle := lipgloss.NewStyle().Padding(0, 3)
+	noStyle := lipgloss.NewStyle().Padding(0, 3)
+
+	if m.hmPromptSelection == 0 {
+		yesStyle = yesStyle.Background(styles.ColorGreen).Foreground(lipgloss.Color("0")).Bold(true)
+		noStyle = noStyle.Foreground(styles.ColorGray)
+	} else {
+		yesStyle = yesStyle.Foreground(styles.ColorGray)
+		noStyle = noStyle.Background(styles.ColorRed).Foreground(lipgloss.Color("0")).Bold(true)
+	}
+
+	buttons := lipgloss.JoinHorizontal(lipgloss.Top,
+		yesStyle.Render("Yes, fetch"),
+		lipgloss.NewStyle().Render("   "),
+		noStyle.Render("No, go back"),
+	)
+
+	footer := lipgloss.NewStyle().
+		Foreground(styles.ColorGray).
+		Italic(true).
+		Align(lipgloss.Center).
+		Render("\nj/k to toggle • Enter to confirm • Esc to cancel")
+
+	var content strings.Builder
+	content.WriteString(title + "\n\n")
+	content.WriteString(message + "\n\n")
+	content.WriteString(info + "\n\n")
+	centeredButtons := lipgloss.NewStyle().Width(50).Align(lipgloss.Center).Render(buttons)
+	content.WriteString(centeredButtons)
+	content.WriteString("\n" + footer)
+
+	// Create box
+	promptBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(styles.ColorPurple).
+		Padding(2, 4).
+		Width(60).
+		Render(content.String())
+
+	// Center on screen
+	return lipgloss.NewStyle().
+		Width(m.width).
+		Height(m.height).
+		Align(lipgloss.Center, lipgloss.Center).
+		Render(promptBox)
 }
 
 // renderDetailView renders the detailed package view

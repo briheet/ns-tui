@@ -36,6 +36,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// Handle HM fetch prompt
+		if m.showHMPrompt {
+			switch msg.String() {
+			case "j", "k", "down", "up", "tab", "shift+tab":
+				m.hmPromptSelection = (m.hmPromptSelection + 1) % 2
+				return m, nil
+			case "enter":
+				m.showHMPrompt = false
+				if m.hmPromptSelection == 0 {
+					// User chose Yes — start fetch
+					m.hmLoading = true
+					return m, fetchHMOptions()
+				}
+				// User chose No — go back to Nixpkgs
+				m.selectedTab = 0
+				m.textInput.Placeholder = "Search NixOS packages..."
+				return m, nil
+			case "esc":
+				m.showHMPrompt = false
+				m.selectedTab = 0
+				m.textInput.Placeholder = "Search NixOS packages..."
+				return m, nil
+			case "ctrl+c", "q":
+				return m, tea.Quit
+			}
+			return m, nil
+		}
+
 		// Don't process other keys when help or tab message is shown
 		if m.showHelp || m.showTabMessage {
 			return m, nil
@@ -49,17 +77,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle tab cycling in search view (not in detail mode)
 		if msg.String() == "tab" {
 			m.selectedTab = (m.selectedTab + 1) % 3
-			if m.selectedTab != 0 {
-				m.showTabMessage = true
-			}
-			return m, nil
+			return m, m.handleTabSwitch()
 		}
 		if msg.String() == "shift+tab" {
 			m.selectedTab = (m.selectedTab - 1 + 3) % 3
-			if m.selectedTab != 0 {
-				m.showTabMessage = true
-			}
-			return m, nil
+			return m, m.handleTabSwitch()
 		}
 
 		// Handle keys based on mode
@@ -81,28 +103,49 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, textinput.Blink
 			}
 		case "j":
-			if m.mode == models.NormalMode && len(m.packages) > 0 {
-				if m.cursor < len(m.packages)-1 {
-					m.cursor++
+			if m.mode == models.NormalMode {
+				if m.selectedTab == 0 && len(m.packages) > 0 {
+					if m.cursor < len(m.packages)-1 {
+						m.cursor++
+					}
+				} else if m.selectedTab == 1 && len(m.hmSearchResults) > 0 {
+					if m.hmCursor < len(m.hmSearchResults)-1 {
+						m.hmCursor++
+					}
 				}
 				return m, nil
 			}
 		case "k":
-			if m.mode == models.NormalMode && len(m.packages) > 0 {
-				if m.cursor > 0 {
-					m.cursor--
+			if m.mode == models.NormalMode {
+				if m.selectedTab == 0 && len(m.packages) > 0 {
+					if m.cursor > 0 {
+						m.cursor--
+					}
+				} else if m.selectedTab == 1 && len(m.hmSearchResults) > 0 {
+					if m.hmCursor > 0 {
+						m.hmCursor--
+					}
 				}
 				return m, nil
 			}
 		case "g":
-			if m.mode == models.NormalMode && len(m.packages) > 0 {
-				m.cursor = 0
-				m.scrollOffset = 0
+			if m.mode == models.NormalMode {
+				if m.selectedTab == 0 && len(m.packages) > 0 {
+					m.cursor = 0
+					m.scrollOffset = 0
+				} else if m.selectedTab == 1 && len(m.hmSearchResults) > 0 {
+					m.hmCursor = 0
+					m.hmScrollOffset = 0
+				}
 				return m, nil
 			}
 		case "G":
-			if m.mode == models.NormalMode && len(m.packages) > 0 {
-				m.cursor = len(m.packages) - 1
+			if m.mode == models.NormalMode {
+				if m.selectedTab == 0 && len(m.packages) > 0 {
+					m.cursor = len(m.packages) - 1
+				} else if m.selectedTab == 1 && len(m.hmSearchResults) > 0 {
+					m.hmCursor = len(m.hmSearchResults) - 1
+				}
 				return m, nil
 			}
 		case "enter", " ":
@@ -114,22 +157,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 			}
-			if m.mode == models.NormalMode && len(m.packages) > 0 {
-				m.mode = models.DetailMode
-				m.selectedPackage = &m.packages[m.cursor]
-				return m, nil
+			if m.mode == models.NormalMode {
+				if m.selectedTab == 0 && len(m.packages) > 0 {
+					m.mode = models.DetailMode
+					m.selectedPackage = &m.packages[m.cursor]
+					return m, nil
+				}
+				// HM detail mode not implemented yet — no-op
 			}
 		case "down":
-			if m.mode == models.InsertMode && len(m.packages) > 0 {
-				if m.cursor < len(m.packages)-1 {
-					m.cursor++
+			if m.mode == models.InsertMode {
+				if m.selectedTab == 0 && len(m.packages) > 0 {
+					if m.cursor < len(m.packages)-1 {
+						m.cursor++
+					}
+				} else if m.selectedTab == 1 && len(m.hmSearchResults) > 0 {
+					if m.hmCursor < len(m.hmSearchResults)-1 {
+						m.hmCursor++
+					}
 				}
 				return m, nil
 			}
 		case "up":
-			if m.mode == models.InsertMode && len(m.packages) > 0 {
-				if m.cursor > 0 {
-					m.cursor--
+			if m.mode == models.InsertMode {
+				if m.selectedTab == 0 && len(m.packages) > 0 {
+					if m.cursor > 0 {
+						m.cursor--
+					}
+				} else if m.selectedTab == 1 && len(m.hmSearchResults) > 0 {
+					if m.hmCursor > 0 {
+						m.hmCursor--
+					}
 				}
 				return m, nil
 			}
@@ -149,6 +207,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor = 0
 			m.scrollOffset = 0
 		}
+		return m, nil
+
+	case hmCacheCheckMsg:
+		if msg.exists && msg.err == nil {
+			m.hmOptions = msg.options
+			m.hmLoaded = true
+			m.textInput.Placeholder = "Search Home Manager options..."
+		} else if msg.exists && msg.err != nil {
+			m.hmErr = msg.err
+		} else {
+			// Cache doesn't exist — show the fetch prompt
+			m.showHMPrompt = true
+			m.hmPromptSelection = 0
+		}
+		return m, nil
+
+	case hmFetchResultMsg:
+		m.hmLoading = false
+		if msg.err != nil {
+			m.hmErr = msg.err
+		} else {
+			m.hmOptions = msg.options
+			m.hmLoaded = true
+			m.textInput.Placeholder = "Search Home Manager options..."
+		}
+		return m, nil
+
+	case hmSearchResultMsg:
+		m.hmSearchResults = msg.results
+		m.hmCursor = 0
+		m.hmScrollOffset = 0
+		m.loading = false
 		return m, nil
 
 	case clipboardMsg:
@@ -188,19 +278,63 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.lastQuery = m.textInput.Value()
 			if m.lastQuery != "" {
 				m.loading = true
-				// Debounce the search
-				return m, tea.Tick(300*time.Millisecond, func(t time.Time) tea.Msg {
-					return performSearch(m.apiClient, m.lastQuery)()
-				})
+				if m.selectedTab == 0 {
+					// Nixpkgs: API search with debounce
+					return m, tea.Tick(300*time.Millisecond, func(t time.Time) tea.Msg {
+						return performSearch(m.apiClient, m.lastQuery)()
+					})
+				} else if m.selectedTab == 1 && m.hmLoaded {
+					// Home Manager: in-memory search with shorter debounce
+					m.hmLastQuery = m.lastQuery
+					return m, tea.Tick(150*time.Millisecond, func(t time.Time) tea.Msg {
+						return searchHMOptions(m.hmOptions, m.hmLastQuery)()
+					})
+				}
 			} else {
-				m.packages = []models.Package{}
-				m.cursor = 0
-				m.scrollOffset = 0
+				if m.selectedTab == 0 {
+					m.packages = []models.Package{}
+					m.cursor = 0
+					m.scrollOffset = 0
+				} else if m.selectedTab == 1 {
+					m.hmSearchResults = []models.HMOption{}
+					m.hmCursor = 0
+					m.hmScrollOffset = 0
+				}
 			}
 		}
 	}
 
 	return m, cmd
+}
+
+// handleTabSwitch handles logic when switching tabs
+func (m *Model) handleTabSwitch() tea.Cmd {
+	switch m.selectedTab {
+	case 0:
+		// Nixpkgs tab
+		m.textInput.Placeholder = "Search NixOS packages..."
+		return nil
+	case 1:
+		// Home Manager tab
+		if m.hmLoaded {
+			m.textInput.Placeholder = "Search Home Manager options..."
+			// If there's a query, re-search with HM data
+			if m.textInput.Value() != "" {
+				m.hmLastQuery = m.textInput.Value()
+				return searchHMOptions(m.hmOptions, m.hmLastQuery)
+			}
+			return nil
+		} else if m.hmLoading {
+			// Already fetching, just show spinner
+			return nil
+		}
+		// Not loaded — check cache
+		return checkHMCache()
+	default:
+		// Pacman — still under development
+		m.showTabMessage = true
+		return nil
+	}
 }
 
 // copyInstallCommand copies the selected installation command to clipboard
