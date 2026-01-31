@@ -794,9 +794,12 @@ func (m Model) renderDetailView() string {
 	}
 
 	// Homepage
-	if pkg.Homepage != "" {
+	if len(pkg.HomepageLinks) > 0 {
 		content.WriteString(styles.DetailLabelStyle.Render("Homepage: "))
-		content.WriteString(styles.DetailValueStyle.Render(pkg.Homepage))
+		homeLinkList := formatStringArray(pkg.HomepageLinks)
+		// Wrap homepage link list to fit within box
+		wrappedHomeLinks := wrapText(homeLinkList, boxWidth-8)
+		content.WriteString(styles.DetailValueStyle.Render(wrappedHomeLinks))
 		content.WriteString("\n\n")
 	}
 

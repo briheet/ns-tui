@@ -10,7 +10,7 @@ type Package struct {
 	LongDescription string
 	License         string
 	LicenseSet      []any
-	Homepage        string
+	HomepageLinks   []any
 	Platforms       []any
 	Programs        []any
 	Maintainers     []any
