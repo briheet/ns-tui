@@ -196,7 +196,7 @@ func (c *Client) SearchPackages(query string) ([]models.Package, error) {
 			LongDescription: getString(src, "package_longDescription"),
 			License:         getString(src, "package_license"),
 			LicenseSet:      getArray(src, "package_license_set"),
-			Homepage:        getString(src, "package_homepage"),
+			HomepageLinks:   getArray(src, "package_homepage"),
 			Platforms:       getArray(src, "package_platforms"),
 			Programs:        getArray(src, "package_programs"),
 			Maintainers:     getArray(src, "package_maintainers"),
