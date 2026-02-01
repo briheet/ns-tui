@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/briheet/ns-tui/internal/models"
@@ -38,6 +39,12 @@ func NewClient() *Client {
 	}
 }
 
+// esLicense represents a single license entry from the Elasticsearch response.
+type esLicense struct {
+	FullName string `json:"fullName"`
+	URL      string `json:"url"`
+}
+
 // esSource is the typed representation of an Elasticsearch _source document.
 type esSource struct {
 	PName          string         `json:"package_pname"`
@@ -46,7 +53,7 @@ type esSource struct {
 	AttrName       string         `json:"package_attr_name"`
 	AttrSet        string         `json:"package_attr_set"`
 	LongDesc       string         `json:"package_longDescription"`
-	License        string         `json:"package_license"`
+	License        []esLicense    `json:"package_license"`
 	LicenseSet     []string       `json:"package_license_set"`
 	Homepage       []string       `json:"package_homepage"`
 	Platforms      []string       `json:"package_platforms"`
@@ -212,7 +219,7 @@ func (c *Client) SearchPackages(query string) ([]models.Package, error) {
 			AttrName:        src.AttrName,
 			AttrSet:         src.AttrSet,
 			LongDescription: src.LongDesc,
-			License:         src.License,
+			License:         formatLicenses(src.License),
 			LicenseSet:      src.LicenseSet,
 			HomepageLinks:   src.Homepage,
 			Platforms:       src.Platforms,
@@ -235,4 +242,15 @@ func (c *Client) SearchPackages(query string) ([]models.Package, error) {
 	}
 
 	return packages, nil
+}
+
+// formatLicenses joins license full names into a comma-separated string.
+func formatLicenses(licenses []esLicense) string {
+	names := make([]string, 0, len(licenses))
+	for _, l := range licenses {
+		if l.FullName != "" {
+			names = append(names, l.FullName)
+		}
+	}
+	return strings.Join(names, ", ")
 }
