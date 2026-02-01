@@ -9,15 +9,15 @@ type Package struct {
 	AttrSet         string
 	LongDescription string
 	License         string
-	LicenseSet      []any
-	HomepageLinks   []any
-	Platforms       []any
-	Programs        []any
+	LicenseSet      []string
+	HomepageLinks   []string
+	Platforms       []string
+	Programs        []string
 	Maintainers     []any
-	MaintainersSet  []any
+	MaintainersSet  []string
 	Teams           []any
-	TeamsSet        []any
-	Outputs         []any
+	TeamsSet        []string
+	Outputs         []string
 	MainProgram     string
 	DefaultOutput   string
 	Position        string

@@ -11,6 +11,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// centerText centers a string within the model's width.
+func (m Model) centerText(s string) string {
+	return lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(s)
+}
+
 // View renders the UI
 func (m Model) View() string {
 	// Show help overlay
@@ -44,110 +49,63 @@ func (m Model) renderSearchView() string {
 		footerHeight = 2 // toast + help bar
 	}
 
-	// HEADER SECTION
+	// HEADER SECTION — use cached banner if width hasn't changed
+	var headerContent string
+	if m.cache.bannerWidth == m.width && m.cache.banner != "" {
+		headerContent = m.cache.banner
+	} else {
+		headerContent = m.buildBannerHeader()
+	}
+
+	// Dynamic parts of the header (depend on state beyond just width)
 	var header strings.Builder
-	header.WriteString("\n\n\n")
-
-	// ASCII Banner
-	bannerStyle := lipgloss.NewStyle().Foreground(styles.ColorBlue).Bold(true)
-	bannerGrayStyle := lipgloss.NewStyle().Foreground(styles.ColorGray)
-
-	bannerLines := []string{
-		"'##::: ##::'######:::::::::::'########:'##::::'##:'####:",
-		" ###:: ##:'##... ##::::::::::... ##..:: ##:::: ##:. ##::",
-		" ####: ##: ##:::..:::::::::::::: ##:::: ##:::: ##:: ##::",
-		" ## ## ##:. ######::'#######:::: ##:::: ##:::: ##:: ##::",
-		" ##. ####::..... ##:........:::: ##:::: ##:::: ##:: ##::",
-		" ##:. ###:'##::: ##::::::::::::: ##:::: ##:::: ##:: ##::",
-		" ##::. ##:. ######:::::::::::::: ##::::. #######::'####:",
-	}
-
-	for _, line := range bannerLines {
-		styledLine := bannerStyle.Render(line)
-		header.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(styledLine))
-		header.WriteString("\n")
-	}
-
-	dotsLine := bannerGrayStyle.Render("..::::..:::......:::::::::::::::..::::::.......:::.....::")
-	header.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(dotsLine))
-	header.WriteString("\n\n")
-
-	var subtitleText string
-	switch m.selectedTab {
-	case 0:
-		subtitleText = "Real-time package discovery with fuzzy search"
-	case 1:
-		subtitleText = "Search Home Manager configuration options"
-	case 2:
-		subtitleText = "Search Pacman packages"
-	default:
-		subtitleText = "Real-time package discovery with fuzzy search"
-	}
-	subtitle := styles.SubtitleStyle.Render(subtitleText)
-	header.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(subtitle))
-	header.WriteString("\n\n")
+	header.WriteString(headerContent)
 
 	// Tabs
-	activeTabStyle := lipgloss.NewStyle().
-		Foreground(styles.ColorPurple).
-		Background(styles.ColorBgHighlight).
-		Bold(true).
-		Padding(0, 2)
-
-	inactiveTabStyle := lipgloss.NewStyle().
-		Foreground(styles.ColorGray).
-		Padding(0, 2)
-
 	tabNames := []string{"Nixpkgs", "Home Manager", "Pacman"}
 	var tabParts []string
 
 	for i, name := range tabNames {
 		if i > 0 {
-			tabParts = append(tabParts, lipgloss.NewStyle().Foreground(styles.ColorGray).Render("│"))
+			tabParts = append(tabParts, styles.TabSeparatorStyle.Render("│"))
 		}
 		if i == m.selectedTab {
-			tabParts = append(tabParts, activeTabStyle.Render(name))
+			tabParts = append(tabParts, styles.ActiveTabStyle.Render(name))
 		} else {
-			tabParts = append(tabParts, inactiveTabStyle.Render(name))
+			tabParts = append(tabParts, styles.InactiveTabStyle.Render(name))
 		}
 	}
 
 	tabs := lipgloss.JoinHorizontal(lipgloss.Top, tabParts...)
-	header.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(tabs))
+	header.WriteString(m.centerText(tabs))
 	header.WriteString("\n\n")
 
 	// Search box with mode indicator
-	var modeIndicator string
+	var modeIndicator strings.Builder
 	if m.mode == models.InsertMode {
-		modeIndicator = styles.InsertModeStyle.Render("-- INSERT --")
+		modeIndicator.WriteString(styles.InsertModeStyle.Render("-- INSERT --"))
 	} else {
-		modeIndicator = styles.NormalModeStyle.Render("-- NORMAL --")
+		modeIndicator.WriteString(styles.NormalModeStyle.Render("-- NORMAL --"))
 	}
 
 	if m.selectedTab == 0 && len(m.packages) > 0 {
-		position := lipgloss.NewStyle().
-			Foreground(styles.ColorGray).
-			Render(fmt.Sprintf(" [%d/%d]", m.cursor+1, len(m.packages)))
-		modeIndicator = modeIndicator + position
+		modeIndicator.WriteString(styles.PositionStyle.Render(fmt.Sprintf(" [%d/%d]", m.cursor+1, len(m.packages))))
 	} else if m.selectedTab == 1 && len(m.hmSearchResults) > 0 {
-		position := lipgloss.NewStyle().
-			Foreground(styles.ColorGray).
-			Render(fmt.Sprintf(" [%d/%d]", m.hmCursor+1, len(m.hmSearchResults)))
-		modeIndicator = modeIndicator + position
+		modeIndicator.WriteString(styles.PositionStyle.Render(fmt.Sprintf(" [%d/%d]", m.hmCursor+1, len(m.hmSearchResults))))
 	}
 
 	searchBox := styles.SearchBoxStyle.Render(m.textInput.View())
-	header.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(searchBox))
+	header.WriteString(m.centerText(searchBox))
 	header.WriteString("\n")
-	header.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(modeIndicator))
+	header.WriteString(m.centerText(modeIndicator.String()))
 	header.WriteString("\n")
 
 	separator := styles.SeparatorStyle.Render(strings.Repeat("─", min(m.width, 80)))
-	header.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(separator))
+	header.WriteString(m.centerText(separator))
 	header.WriteString("\n\n")
 
-	headerContent := header.String()
-	headerLines := strings.Count(headerContent, "\n")
+	headerStr := header.String()
+	headerLines := strings.Count(headerStr, "\n")
 
 	// RESULTS SECTION — pass remaining height so results don't overflow
 	remainingLines := m.height - headerLines - footerHeight - 1
@@ -166,47 +124,91 @@ func (m Model) renderSearchView() string {
 
 	// Toast (if visible)
 	if m.toastVisible {
-		toastStyle := lipgloss.NewStyle().
-			Foreground(styles.ColorGreen).
-			Background(styles.ColorDarkGray).
-			Padding(0, 2).
-			Bold(true)
-		toast := toastStyle.Render(m.toastMessage)
-		footer.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(toast))
+		toast := styles.ToastStyle.Render(m.toastMessage)
+		footer.WriteString(m.centerText(toast))
 		footer.WriteString("\n")
 	}
 
-	// Help bar
-	var helpText string
-	if m.mode == models.InsertMode {
-		helpText = "esc: normal mode • ↑/↓: navigate • tab: switch source • ?: help • q: quit"
-	} else {
-		helpText = "i: insert mode • j/k: navigate • enter/space: details • g/G: top/bottom • tab: switch source • ?: help • q: quit"
+	// Help bar — use cached if width matches
+	var helpRendered string
+	if m.cache.helpWidth == m.width {
+		if m.mode == models.InsertMode {
+			helpRendered = m.cache.helpInsert
+		} else {
+			helpRendered = m.cache.helpNormal
+		}
 	}
-	help := styles.HelpStyle.Render(helpText)
-	footer.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(help))
+	if helpRendered == "" {
+		var helpText string
+		if m.mode == models.InsertMode {
+			helpText = "esc: normal mode • ↑/↓: navigate • tab: switch source • ?: help • q: quit"
+		} else {
+			helpText = "i: insert mode • j/k: navigate • enter/space: details • g/G: top/bottom • tab: switch source • ?: help • q: quit"
+		}
+		helpRendered = m.centerText(styles.HelpStyle.Render(helpText))
+	}
+	footer.WriteString(helpRendered)
 
 	footerContent := footer.String()
 
 	// COMBINE ALL SECTIONS
-	// Use lipgloss.Place to position footer at bottom
-	mainAndResults := headerContent + resultsContent
+	var result strings.Builder
+	result.WriteString(headerStr)
+	result.WriteString(resultsContent)
 
-	// Calculate how much space we need to fill to push footer to bottom
-	// Count lines in mainAndResults
-	mainLines := strings.Count(mainAndResults, "\n")
-	footerLines := footerHeight
-
-	// Fill remaining space
-	availableHeight := m.height - footerLines - 1
+	// Fill remaining space to push footer to bottom
+	mainLines := strings.Count(result.String(), "\n")
+	availableHeight := m.height - footerHeight - 1
 	if mainLines < availableHeight {
-		padding := availableHeight - mainLines
-		for i := 0; i < padding; i++ {
-			mainAndResults += "\n"
-		}
+		result.WriteString(strings.Repeat("\n", availableHeight-mainLines))
 	}
 
-	return mainAndResults + "\n" + footerContent
+	result.WriteString("\n")
+	result.WriteString(footerContent)
+	return result.String()
+}
+
+// buildBannerHeader builds the static banner portion of the header.
+func (m Model) buildBannerHeader() string {
+	var header strings.Builder
+	header.WriteString("\n\n\n")
+
+	bannerLines := []string{
+		"'##::: ##::'######:::::::::::'########:'##::::'##:'####:",
+		" ###:: ##:'##... ##::::::::::... ##..:: ##:::: ##:. ##::",
+		" ####: ##: ##:::..:::::::::::::: ##:::: ##:::: ##:: ##::",
+		" ## ## ##:. ######::'#######:::: ##:::: ##:::: ##:: ##::",
+		" ##. ####::..... ##:........:::: ##:::: ##:::: ##:: ##::",
+		" ##:. ###:'##::: ##::::::::::::: ##:::: ##:::: ##:: ##::",
+		" ##::. ##:. ######:::::::::::::: ##::::. #######::'####:",
+	}
+
+	for _, line := range bannerLines {
+		styledLine := styles.BannerStyle.Render(line)
+		header.WriteString(m.centerText(styledLine))
+		header.WriteString("\n")
+	}
+
+	dotsLine := styles.BannerGrayStyle.Render("..::::..:::......:::::::::::::::..::::::.......:::.....::")
+	header.WriteString(m.centerText(dotsLine))
+	header.WriteString("\n\n")
+
+	var subtitleText string
+	switch m.selectedTab {
+	case 0:
+		subtitleText = "Real-time package discovery with fuzzy search"
+	case 1:
+		subtitleText = "Search Home Manager configuration options"
+	case 2:
+		subtitleText = "Search Pacman packages"
+	default:
+		subtitleText = "Real-time package discovery with fuzzy search"
+	}
+	subtitle := styles.SubtitleStyle.Render(subtitleText)
+	header.WriteString(m.centerText(subtitle))
+	header.WriteString("\n\n")
+
+	return header.String()
 }
 
 // renderResults renders the search results within the given line budget
@@ -217,7 +219,7 @@ func (m Model) renderResults(availHeight int) string {
 	if m.loading {
 		loading := fmt.Sprintf("%s Searching...", m.spinner.View())
 		loadingStyled := styles.LoadingStyle.Render(loading)
-		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(loadingStyled))
+		content.WriteString(m.centerText(loadingStyled))
 		content.WriteString("\n")
 		return content.String()
 	}
@@ -225,7 +227,7 @@ func (m Model) renderResults(availHeight int) string {
 	// Error message
 	if m.err != nil {
 		errorMsg := styles.ErrorStyle.Render(fmt.Sprintf("❌ Error: %v", m.err))
-		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(errorMsg))
+		content.WriteString(m.centerText(errorMsg))
 		content.WriteString("\n")
 		return content.String()
 	}
@@ -240,7 +242,7 @@ func (m Model) renderResults(availHeight int) string {
 
 		visibleCount := min(maxVisible, len(m.packages))
 		count := styles.CountStyle.Render(fmt.Sprintf("📦 %d packages (showing %d)", len(m.packages), visibleCount))
-		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(count))
+		content.WriteString(m.centerText(count))
 		content.WriteString("\n\n")
 
 		// Ensure cursor is in view
@@ -261,27 +263,22 @@ func (m Model) renderResults(availHeight int) string {
 
 		// Scroll indicators
 		if m.scrollOffset > 0 {
-			scrollUp := lipgloss.NewStyle().Foreground(styles.ColorGray).Render("⬆ More above")
-			content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(scrollUp))
+			scrollUp := styles.ScrollIndicatorStyle.Render("⬆ More above")
+			content.WriteString(m.centerText(scrollUp))
 			content.WriteString("\n")
 		}
 		if end < len(m.packages) {
-			scrollDown := lipgloss.NewStyle().Foreground(styles.ColorGray).Render(fmt.Sprintf("⬇ %d more below", len(m.packages)-end))
-			content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(scrollDown))
+			scrollDown := styles.ScrollIndicatorStyle.Render(fmt.Sprintf("⬇ %d more below", len(m.packages)-end))
+			content.WriteString(m.centerText(scrollDown))
 			content.WriteString("\n")
 		}
 	} else if !m.loading && m.lastQuery != "" {
-		noResults := lipgloss.NewStyle().
-			Foreground(styles.ColorYellow).
-			Render("No packages found. Try a different search term.")
-		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(noResults))
+		noResults := styles.NoResultsStyle.Render("No packages found. Try a different search term.")
+		content.WriteString(m.centerText(noResults))
 		content.WriteString("\n")
 	} else if m.lastQuery == "" && !m.loading {
-		hint := lipgloss.NewStyle().
-			Foreground(styles.ColorTeal).
-			Italic(true).
-			Render("Type to search for NixOS packages...")
-		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(hint))
+		hint := styles.HintStyle.Render("Type to search for NixOS packages...")
+		content.WriteString(m.centerText(hint))
 		content.WriteString("\n")
 	}
 
@@ -298,7 +295,7 @@ func (m Model) renderPackageItem(index int) string {
 	}
 
 	name := styles.PackageNameStyle.Render(pkg.Name)
-	version := styles.VersionStyle.Render(fmt.Sprintf("v%s", pkg.Version))
+	version := styles.VersionStyle.Render("v" + pkg.Version)
 	desc := strings.Join(strings.Fields(pkg.Description), " ")
 	maxDescLen := 70
 	if m.width > 100 {
@@ -309,27 +306,31 @@ func (m Model) renderPackageItem(index int) string {
 	}
 	desc = styles.DescriptionStyle.Render(desc)
 
-	// Build line with name, version, and description
-	var line string
+	// Build line with strings.Builder
+	var b strings.Builder
+	b.WriteString(cursor)
+	b.WriteString(name)
+	b.WriteByte(' ')
+	b.WriteString(version)
+	b.WriteString("\n     ")
+	b.WriteString(desc)
+
 	if len(pkg.Programs) > 0 {
-		// Format programs list
-		programsStyle := lipgloss.NewStyle().Foreground(styles.ColorTeal).Faint(true)
 		var programsList []string
-		maxPrograms := 5 // Show max 5 programs
+		maxPrograms := 5
 		for i, prog := range pkg.Programs {
 			if i >= maxPrograms {
 				programsList = append(programsList, fmt.Sprintf("+%d more", len(pkg.Programs)-maxPrograms))
 				break
 			}
-			if progStr, ok := prog.(string); ok {
-				programsList = append(programsList, progStr)
-			}
+			programsList = append(programsList, prog)
 		}
-		programsText := programsStyle.Render("📦 " + strings.Join(programsList, ", "))
-		line = fmt.Sprintf("%s%s %s\n     %s\n     %s", cursor, name, version, desc, programsText)
-	} else {
-		line = fmt.Sprintf("%s%s %s\n     %s", cursor, name, version, desc)
+		programsText := styles.ProgramsStyle.Render("📦 " + strings.Join(programsList, ", "))
+		b.WriteString("\n     ")
+		b.WriteString(programsText)
 	}
+
+	line := b.String()
 
 	var renderedLine string
 	if m.cursor == index {
@@ -338,7 +339,7 @@ func (m Model) renderPackageItem(index int) string {
 		renderedLine = styles.ResultItemStyle.Render(line)
 	}
 
-	return lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(renderedLine) + "\n"
+	return m.centerText(renderedLine) + "\n"
 }
 
 // renderHMResults renders the Home Manager search results within the given line budget
@@ -349,7 +350,7 @@ func (m Model) renderHMResults(availHeight int) string {
 	if m.hmLoading {
 		loading := fmt.Sprintf("%s Fetching Home Manager options...", m.spinner.View())
 		loadingStyled := styles.LoadingStyle.Render(loading)
-		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(loadingStyled))
+		content.WriteString(m.centerText(loadingStyled))
 		content.WriteString("\n")
 		return content.String()
 	}
@@ -358,7 +359,7 @@ func (m Model) renderHMResults(availHeight int) string {
 	if m.loading {
 		loading := fmt.Sprintf("%s Searching...", m.spinner.View())
 		loadingStyled := styles.LoadingStyle.Render(loading)
-		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(loadingStyled))
+		content.WriteString(m.centerText(loadingStyled))
 		content.WriteString("\n")
 		return content.String()
 	}
@@ -366,18 +367,15 @@ func (m Model) renderHMResults(availHeight int) string {
 	// Error message
 	if m.hmErr != nil {
 		errorMsg := styles.ErrorStyle.Render(fmt.Sprintf("Error: %v", m.hmErr))
-		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(errorMsg))
+		content.WriteString(m.centerText(errorMsg))
 		content.WriteString("\n")
 		return content.String()
 	}
 
 	// Not loaded yet (waiting for user action)
 	if !m.hmLoaded {
-		hint := lipgloss.NewStyle().
-			Foreground(styles.ColorGray).
-			Italic(true).
-			Render("Home Manager options not loaded yet.")
-		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(hint))
+		hint := styles.HintGrayStyle.Render("Home Manager options not loaded yet.")
+		content.WriteString(m.centerText(hint))
 		content.WriteString("\n")
 		return content.String()
 	}
@@ -392,7 +390,7 @@ func (m Model) renderHMResults(availHeight int) string {
 
 		visibleCount := min(maxVisible, len(m.hmSearchResults))
 		count := styles.CountStyle.Render(fmt.Sprintf("Found %d options (showing %d)", len(m.hmSearchResults), visibleCount))
-		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(count))
+		content.WriteString(m.centerText(count))
 		content.WriteString("\n\n")
 
 		// Ensure cursor is in view
@@ -412,27 +410,22 @@ func (m Model) renderHMResults(availHeight int) string {
 
 		// Scroll indicators
 		if m.hmScrollOffset > 0 {
-			scrollUp := lipgloss.NewStyle().Foreground(styles.ColorGray).Render("More above")
-			content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(scrollUp))
+			scrollUp := styles.ScrollIndicatorStyle.Render("More above")
+			content.WriteString(m.centerText(scrollUp))
 			content.WriteString("\n")
 		}
 		if end < len(m.hmSearchResults) {
-			scrollDown := lipgloss.NewStyle().Foreground(styles.ColorGray).Render(fmt.Sprintf("%d more below", len(m.hmSearchResults)-end))
-			content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(scrollDown))
+			scrollDown := styles.ScrollIndicatorStyle.Render(fmt.Sprintf("%d more below", len(m.hmSearchResults)-end))
+			content.WriteString(m.centerText(scrollDown))
 			content.WriteString("\n")
 		}
 	} else if m.hmLastQuery != "" {
-		noResults := lipgloss.NewStyle().
-			Foreground(styles.ColorYellow).
-			Render("No options found. Try a different search term.")
-		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(noResults))
+		noResults := styles.NoResultsStyle.Render("No options found. Try a different search term.")
+		content.WriteString(m.centerText(noResults))
 		content.WriteString("\n")
 	} else {
-		hint := lipgloss.NewStyle().
-			Foreground(styles.ColorTeal).
-			Italic(true).
-			Render("Type to search Home Manager options...")
-		content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(hint))
+		hint := styles.HintStyle.Render("Type to search Home Manager options...")
+		content.WriteString(m.centerText(hint))
 		content.WriteString("\n")
 	}
 
@@ -462,7 +455,14 @@ func (m Model) renderHMOptionItem(index int) string {
 	}
 	desc = styles.DescriptionStyle.Render(desc)
 
-	line := fmt.Sprintf("%s%s  %s\n     %s", cursor, name, typeStr, desc)
+	var b strings.Builder
+	b.WriteString(cursor)
+	b.WriteString(name)
+	b.WriteString("  ")
+	b.WriteString(typeStr)
+	b.WriteString("\n     ")
+	b.WriteString(desc)
+	line := b.String()
 
 	var renderedLine string
 	if m.hmCursor == index {
@@ -471,28 +471,17 @@ func (m Model) renderHMOptionItem(index int) string {
 		renderedLine = styles.ResultItemStyle.Render(line)
 	}
 
-	return lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(renderedLine) + "\n"
+	return m.centerText(renderedLine) + "\n"
 }
 
 // renderHMPromptOverlay renders the Home Manager fetch prompt modal
 func (m Model) renderHMPromptOverlay() string {
-	title := lipgloss.NewStyle().
-		Foreground(styles.ColorPurple).
-		Bold(true).
-		Align(lipgloss.Center).
-		Render("HOME MANAGER OPTIONS")
+	title := styles.OverlayTitleStyle.Render("HOME MANAGER OPTIONS")
 
-	message := lipgloss.NewStyle().
-		Foreground(styles.ColorWhite).
-		Align(lipgloss.Center).
-		Width(50).
+	message := styles.OverlayMessageStyle.Width(50).
 		Render("Home Manager options have not been fetched yet. This will run `nix build` to download and cache the options JSON locally.")
 
-	info := lipgloss.NewStyle().
-		Foreground(styles.ColorGray).
-		Italic(true).
-		Align(lipgloss.Center).
-		Render("This may take a minute on first run.")
+	info := styles.OverlayInfoStyle.Render("This may take a minute on first run.")
 
 	// Yes / No buttons
 	yesStyle := lipgloss.NewStyle().Padding(0, 3)
@@ -508,15 +497,11 @@ func (m Model) renderHMPromptOverlay() string {
 
 	buttons := lipgloss.JoinHorizontal(lipgloss.Top,
 		yesStyle.Render("Yes, fetch"),
-		lipgloss.NewStyle().Render("   "),
+		"   ",
 		noStyle.Render("No, go back"),
 	)
 
-	footer := lipgloss.NewStyle().
-		Foreground(styles.ColorGray).
-		Italic(true).
-		Align(lipgloss.Center).
-		Render("\nj/k to toggle • Enter to confirm • Esc to cancel")
+	footer := styles.OverlayInfoStyle.Render("\nj/k to toggle • Enter to confirm • Esc to cancel")
 
 	var content strings.Builder
 	content.WriteString(title + "\n\n")
@@ -527,12 +512,7 @@ func (m Model) renderHMPromptOverlay() string {
 	content.WriteString("\n" + footer)
 
 	// Create box
-	promptBox := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(styles.ColorPurple).
-		Padding(2, 4).
-		Width(60).
-		Render(content.String())
+	promptBox := styles.OverlayBoxStyle.Render(content.String())
 
 	// Center on screen
 	return lipgloss.NewStyle().
@@ -567,7 +547,7 @@ func (m Model) renderHMDetailView() string {
 	// 3. Read-only (only show if true)
 	if opt.ReadOnly {
 		roLine := styles.DetailLabelStyle.Render("Read Only: ") +
-			lipgloss.NewStyle().Foreground(styles.ColorYellow).Render("Yes")
+			styles.ReadOnlyStyle.Render("Yes")
 		content.WriteString(roLine)
 		content.WriteString("\n")
 	}
@@ -600,11 +580,10 @@ func (m Model) renderHMDetailView() string {
 	if len(opt.Declarations) > 0 {
 		content.WriteString(styles.DetailLabelStyle.Render("Declared in:"))
 		content.WriteString("\n")
-		urlStyle := lipgloss.NewStyle().Foreground(styles.ColorBlue)
 		for _, decl := range opt.Declarations {
 			content.WriteString("  " + styles.DetailValueStyle.Render(decl.Name))
 			if decl.URL != "" {
-				content.WriteString("\n  " + urlStyle.Render(decl.URL))
+				content.WriteString("\n  " + styles.URLStyle.Render(decl.URL))
 			}
 			content.WriteString("\n")
 		}
@@ -621,8 +600,8 @@ func (m Model) renderHMDetailView() string {
 		if lineLen > 2 {
 			rightLine = strings.Repeat("─", lineLen-2)
 		}
-		separator := styles.SeparatorStyle.Render(leftLine + separatorLabel + rightLine)
-		content.WriteString(separator)
+		sep := styles.SeparatorStyle.Render(leftLine + separatorLabel + rightLine)
+		content.WriteString(sep)
 		content.WriteString("\n\n")
 
 		maxVisible := 8
@@ -642,11 +621,13 @@ func (m Model) renderHMDetailView() string {
 		start := hmRelScroll
 		end := min(start+maxVisible, len(m.hmRelatedOptions))
 
+		relCenterStyle := lipgloss.NewStyle().Align(lipgloss.Center).Width(boxWidth - 4)
+
 		for i := start; i < end; i++ {
 			rel := m.hmRelatedOptions[i]
-			cursor := "  "
+			cur := "  "
 			if m.hmRelatedCursor == i {
-				cursor = "▶ "
+				cur = "▶ "
 			}
 
 			nameStyled := styles.PackageNameStyle.Render(rel.Name)
@@ -663,31 +644,36 @@ func (m Model) renderHMDetailView() string {
 			}
 			descStyled := styles.DescriptionStyle.Render(desc)
 
-			line := fmt.Sprintf("%s%s  %s\n     %s", cursor, nameStyled, typeStyled, descStyled)
+			var b strings.Builder
+			b.WriteString(cur)
+			b.WriteString(nameStyled)
+			b.WriteString("  ")
+			b.WriteString(typeStyled)
+			b.WriteString("\n     ")
+			b.WriteString(descStyled)
+			line := b.String()
 
 			if m.hmRelatedCursor == i {
 				line = styles.SelectedItemStyle.Render(line)
 			} else {
 				line = styles.ResultItemStyle.Render(line)
 			}
-			content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(boxWidth - 4).Render(line))
+			content.WriteString(relCenterStyle.Render(line))
 			content.WriteString("\n\n")
 		}
 
 		// Scroll indicators
 		if start > 0 {
-			content.WriteString(lipgloss.NewStyle().Foreground(styles.ColorGray).Render("  More above"))
+			content.WriteString(styles.ScrollIndicatorStyle.Render("  More above"))
 			content.WriteString("\n")
 		}
 		if end < len(m.hmRelatedOptions) {
-			content.WriteString(lipgloss.NewStyle().Foreground(styles.ColorGray).
-				Render(fmt.Sprintf("  %d more below", len(m.hmRelatedOptions)-end)))
+			content.WriteString(styles.ScrollIndicatorStyle.Render(fmt.Sprintf("  %d more below", len(m.hmRelatedOptions)-end)))
 			content.WriteString("\n")
 		}
 		content.WriteString("\n")
 	} else {
-		content.WriteString(lipgloss.NewStyle().Foreground(styles.ColorGray).Italic(true).
-			Render("No related options found."))
+		content.WriteString(styles.HintGrayStyle.Render("No related options found."))
 		content.WriteString("\n\n")
 	}
 
@@ -723,14 +709,12 @@ func buildBreadcrumb(loc []string) string {
 	if len(loc) == 0 {
 		return ""
 	}
-	segmentStyle := lipgloss.NewStyle().Foreground(styles.ColorCyan).Bold(true)
-	separatorStyle := lipgloss.NewStyle().Foreground(styles.ColorGray)
 
 	var parts []string
 	for i, seg := range loc {
-		parts = append(parts, segmentStyle.Render(seg))
+		parts = append(parts, styles.BreadcrumbSegmentStyle.Render(seg))
 		if i < len(loc)-1 {
-			parts = append(parts, separatorStyle.Render(" > "))
+			parts = append(parts, styles.BreadcrumbSepStyle.Render(" > "))
 		}
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, parts...)
@@ -796,8 +780,7 @@ func (m Model) renderDetailView() string {
 	// Homepage
 	if len(pkg.HomepageLinks) > 0 {
 		content.WriteString(styles.DetailLabelStyle.Render("Homepage: "))
-		homeLinkList := formatStringArray(pkg.HomepageLinks)
-		// Wrap homepage link list to fit within box
+		homeLinkList := strings.Join(pkg.HomepageLinks, ", ")
 		wrappedHomeLinks := wrapText(homeLinkList, boxWidth-8)
 		content.WriteString(styles.DetailValueStyle.Render(wrappedHomeLinks))
 		content.WriteString("\n\n")
@@ -813,8 +796,7 @@ func (m Model) renderDetailView() string {
 	// Programs (show all with wrapping)
 	if len(pkg.Programs) > 0 {
 		content.WriteString(styles.DetailLabelStyle.Render("Programs: "))
-		programsList := formatStringArray(pkg.Programs)
-		// Wrap programs list to fit within box
+		programsList := strings.Join(pkg.Programs, ", ")
 		wrappedPrograms := wrapText(programsList, boxWidth-8)
 		content.WriteString(styles.DetailValueStyle.Render(wrappedPrograms))
 		content.WriteString("\n\n")
@@ -827,10 +809,10 @@ func (m Model) renderDetailView() string {
 
 		content.WriteString(styles.DetailLabelStyle.Render("Platform: "))
 		if isSupported {
-			content.WriteString(lipgloss.NewStyle().Foreground(styles.ColorGreen).Render("✓ Supported on your platform"))
+			content.WriteString(styles.PlatformSupportedStyle.Render("✓ Supported on your platform"))
 			content.WriteString(styles.DetailValueStyle.Render(fmt.Sprintf(" (%s)", currentPlatform)))
 		} else {
-			content.WriteString(lipgloss.NewStyle().Foreground(styles.ColorRed).Render("✗ Not supported on your platform"))
+			content.WriteString(styles.PlatformUnsupportedStyle.Render("✗ Not supported on your platform"))
 			content.WriteString(styles.DetailValueStyle.Render(fmt.Sprintf(" (%s)", currentPlatform)))
 		}
 		content.WriteString("\n\n")
@@ -852,27 +834,19 @@ func (m Model) renderDetailView() string {
 	leftWidth := 20  // Reduced for better balance
 	rightWidth := 65 // Adjusted for better balance
 
-	// Styles for menu items
-	indicatorStyle := lipgloss.NewStyle().Foreground(styles.ColorGreen).Bold(true)
-	selectedMethodStyle := lipgloss.NewStyle().Foreground(styles.ColorPurple).Bold(true)
-	normalMethodStyle := lipgloss.NewStyle().Foreground(styles.ColorWhite)
-
 	var menuItems []string
 	for i, name := range methodNames {
 		var line string
 		if i == m.selectedInstallMethod {
-			// Selected item: colored indicator + colored method name
-			indicator := indicatorStyle.Render("→ ")
-			methodName := selectedMethodStyle.Render(name)
+			indicator := styles.IndicatorStyle.Render("→ ")
+			methodName := styles.SelectedMethodStyle.Render(name)
 			line = indicator + methodName
-			// Calculate padding (accounting for ANSI codes)
-			visibleLen := 2 + len(name) // "→ " + name
+			visibleLen := 2 + len(name)
 			if visibleLen < leftWidth {
 				line = line + strings.Repeat(" ", leftWidth-visibleLen)
 			}
 		} else {
-			// Normal item: spaces + normal method name
-			methodName := normalMethodStyle.Render(name)
+			methodName := styles.NormalMethodStyle.Render(name)
 			line = "  " + methodName
 			visibleLen := 2 + len(name)
 			if visibleLen < leftWidth {
@@ -884,19 +858,13 @@ func (m Model) renderDetailView() string {
 	leftContent := lipgloss.JoinVertical(lipgloss.Left, menuItems...)
 
 	// Left box
-	leftBoxStyle := lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(styles.ColorGray).
-		Padding(0, 1)
-
-	leftBox := leftBoxStyle.Render(leftContent)
+	leftBox := styles.LeftBoxStyle.Render(leftContent)
 
 	// Right box content - styled command
 	selectedCmd := commands[m.selectedInstallMethod]
 
 	// Style the command with green color and center it
-	cmdStyle := lipgloss.NewStyle().Foreground(styles.ColorGreen).Bold(true)
-	styledCmd := cmdStyle.Render(selectedCmd)
+	styledCmd := styles.CmdStyle.Render(selectedCmd)
 
 	// Center the command
 	visibleCmdLen := len(selectedCmd)
@@ -905,18 +873,17 @@ func (m Model) renderDetailView() string {
 		cmdRightPad := rightWidth - visibleCmdLen - cmdLeftPad
 		styledCmd = strings.Repeat(" ", cmdLeftPad) + styledCmd + strings.Repeat(" ", cmdRightPad)
 	} else if visibleCmdLen > rightWidth {
-		// Truncate the original, then style
 		selectedCmd = selectedCmd[:rightWidth]
-		styledCmd = cmdStyle.Render(selectedCmd)
+		styledCmd = styles.CmdStyle.Render(selectedCmd)
 	}
 
 	// Style help text - bold and visible
-	helpStyle := lipgloss.NewStyle().Foreground(styles.ColorTeal).Bold(true)
+	helpStyle := styles.CopyHelpStyle
 	helpText := "Press Enter or Spacebar to copy"
 
 	// Change text when copied successfully
 	if m.toastVisible {
-		helpStyle = lipgloss.NewStyle().Foreground(styles.ColorGreen).Bold(true)
+		helpStyle = styles.CopiedHelpStyle
 		helpText = "✓ Copied successfully"
 	}
 
@@ -935,12 +902,7 @@ func (m Model) renderDetailView() string {
 	)
 
 	// Right box
-	rightBoxStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(styles.ColorGreen).
-		Padding(0, 1)
-
-	rightBox := rightBoxStyle.Render(rightContent)
+	rightBox := styles.RightBoxStyle.Render(rightContent)
 
 	// Join with explicit spacer
 	spacer := "  "
@@ -948,7 +910,7 @@ func (m Model) renderDetailView() string {
 
 	// Center the installation layout
 	centeredInstallLayout := lipgloss.NewStyle().
-		Width(boxWidth - 4). // Account for box padding
+		Width(boxWidth - 4).
 		Align(lipgloss.Center).
 		Render(installLayout)
 
@@ -983,17 +945,6 @@ func (m Model) renderDetailView() string {
 		Render(box)
 
 	return doc
-}
-
-// formatStringArray converts an array of interfaces to comma-separated string
-func formatStringArray(arr []any) string {
-	var strs []string
-	for _, item := range arr {
-		if str, ok := item.(string); ok {
-			strs = append(strs, str)
-		}
-	}
-	return strings.Join(strs, ", ")
 }
 
 // formatMaintainers formats maintainer information
@@ -1091,16 +1042,14 @@ func getCurrentPlatform() string {
 		nixOS = "netbsd"
 	}
 
-	return fmt.Sprintf("%s-%s", nixArch, nixOS)
+	return nixArch + "-" + nixOS
 }
 
 // isPlatformSupported checks if the current platform is in the supported platforms list
-func isPlatformSupported(platforms []any, currentPlatform string) bool {
+func isPlatformSupported(platforms []string, currentPlatform string) bool {
 	for _, platform := range platforms {
-		if platformStr, ok := platform.(string); ok {
-			if platformStr == currentPlatform {
-				return true
-			}
+		if platform == currentPlatform {
+			return true
 		}
 	}
 	return false
@@ -1108,17 +1057,10 @@ func isPlatformSupported(platforms []any, currentPlatform string) bool {
 
 // renderHelpOverlay renders the help overlay modal
 func (m Model) renderHelpOverlay() string {
-	helpTitle := lipgloss.NewStyle().
-		Foreground(styles.ColorPurple).
-		Bold(true).
-		Align(lipgloss.Center).
-		Render("⌨  KEYBINDINGS REFERENCE")
+	helpTitle := styles.OverlayTitleStyle.Render("⌨  KEYBINDINGS REFERENCE")
 
 	// Insert Mode section
-	insertModeTitle := lipgloss.NewStyle().
-		Foreground(styles.ColorGreen).
-		Bold(true).
-		Render("INSERT MODE")
+	insertModeTitle := styles.PlatformSupportedStyle.Render("INSERT MODE")
 
 	insertModeKeys := []string{
 		"Type           → Search for packages",
@@ -1129,10 +1071,7 @@ func (m Model) renderHelpOverlay() string {
 	}
 
 	// Normal Mode section
-	normalModeTitle := lipgloss.NewStyle().
-		Foreground(styles.ColorBlue).
-		Bold(true).
-		Render("NORMAL MODE")
+	normalModeTitle := styles.URLStyle.Render("NORMAL MODE")
 
 	normalModeKeys := []string{
 		"i              → Switch to Insert mode",
@@ -1143,10 +1082,7 @@ func (m Model) renderHelpOverlay() string {
 	}
 
 	// Detail View section
-	detailModeTitle := lipgloss.NewStyle().
-		Foreground(styles.ColorTeal).
-		Bold(true).
-		Render("DETAIL VIEW")
+	detailModeTitle := styles.CopyHelpStyle.Render("DETAIL VIEW")
 
 	detailModeKeys := []string{
 		"j / k           → Cycle install methods (down/up)",
@@ -1157,10 +1093,7 @@ func (m Model) renderHelpOverlay() string {
 	}
 
 	// Global keys
-	globalTitle := lipgloss.NewStyle().
-		Foreground(styles.ColorYellow).
-		Bold(true).
-		Render("GLOBAL")
+	globalTitle := styles.ReadOnlyStyle.Render("GLOBAL")
 
 	globalKeys := []string{
 		"?              → Toggle this help",
@@ -1173,33 +1106,29 @@ func (m Model) renderHelpOverlay() string {
 
 	content.WriteString(insertModeTitle + "\n")
 	for _, key := range insertModeKeys {
-		content.WriteString("  " + lipgloss.NewStyle().Foreground(styles.ColorWhite).Render(key) + "\n")
+		content.WriteString("  " + styles.WhiteTextStyle.Render(key) + "\n")
 	}
 	content.WriteString("\n")
 
 	content.WriteString(normalModeTitle + "\n")
 	for _, key := range normalModeKeys {
-		content.WriteString("  " + lipgloss.NewStyle().Foreground(styles.ColorWhite).Render(key) + "\n")
+		content.WriteString("  " + styles.WhiteTextStyle.Render(key) + "\n")
 	}
 	content.WriteString("\n")
 
 	content.WriteString(detailModeTitle + "\n")
 	for _, key := range detailModeKeys {
-		content.WriteString("  " + lipgloss.NewStyle().Foreground(styles.ColorWhite).Render(key) + "\n")
+		content.WriteString("  " + styles.WhiteTextStyle.Render(key) + "\n")
 	}
 	content.WriteString("\n")
 
 	content.WriteString(globalTitle + "\n")
 	for _, key := range globalKeys {
-		content.WriteString("  " + lipgloss.NewStyle().Foreground(styles.ColorWhite).Render(key) + "\n")
+		content.WriteString("  " + styles.WhiteTextStyle.Render(key) + "\n")
 	}
 
 	// Footer
-	footer := lipgloss.NewStyle().
-		Foreground(styles.ColorGray).
-		Italic(true).
-		Align(lipgloss.Center).
-		Render("\nPress ? or Esc to close")
+	footer := styles.OverlayInfoStyle.Render("\nPress ? or Esc to close")
 
 	content.WriteString("\n" + footer)
 
@@ -1223,18 +1152,12 @@ func (m Model) renderHelpOverlay() string {
 func (m Model) renderPacmanPlaceholder() string {
 	var content strings.Builder
 
-	title := lipgloss.NewStyle().
-		Foreground(styles.ColorYellow).
-		Bold(true).
-		Render("Under Development")
-	content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(title))
+	title := styles.PacmanTitleStyle.Render("Under Development")
+	content.WriteString(m.centerText(title))
 	content.WriteString("\n\n")
 
-	message := lipgloss.NewStyle().
-		Foreground(styles.ColorGray).
-		Italic(true).
-		Render("Pacman package search will be available in a future release.")
-	content.WriteString(lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(message))
+	message := styles.PacmanMsgStyle.Render("Pacman package search will be available in a future release.")
+	content.WriteString(m.centerText(message))
 	content.WriteString("\n")
 
 	return content.String()

@@ -38,6 +38,31 @@ func NewClient() *Client {
 	}
 }
 
+// esSource is the typed representation of an Elasticsearch _source document.
+type esSource struct {
+	PName          string         `json:"package_pname"`
+	PVersion       string         `json:"package_pversion"`
+	Description    string         `json:"package_description"`
+	AttrName       string         `json:"package_attr_name"`
+	AttrSet        string         `json:"package_attr_set"`
+	LongDesc       string         `json:"package_longDescription"`
+	License        string         `json:"package_license"`
+	LicenseSet     []string       `json:"package_license_set"`
+	Homepage       []string       `json:"package_homepage"`
+	Platforms      []string       `json:"package_platforms"`
+	Programs       []string       `json:"package_programs"`
+	Maintainers    []any          `json:"package_maintainers"`
+	MaintainersSet []string       `json:"package_maintainers_set"`
+	Teams          []any          `json:"package_teams"`
+	TeamsSet       []string       `json:"package_teams_set"`
+	Outputs        []string       `json:"package_outputs"`
+	MainProgram    string         `json:"package_mainProgram"`
+	DefaultOutput  string         `json:"package_default_output"`
+	Position       string         `json:"package_position"`
+	System         string         `json:"package_system"`
+	Hydra          map[string]any `json:"package_hydra"`
+}
+
 // SearchPackages searches for packages matching the query
 func (c *Client) SearchPackages(query string) ([]models.Package, error) {
 	// Build Elasticsearch query
@@ -153,22 +178,17 @@ func (c *Client) SearchPackages(query string) ([]models.Package, error) {
 		return nil, fmt.Errorf("elasticsearch returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Parse response
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
+	// Parse response using streaming decoder
 	var esResponse struct {
 		Hits struct {
 			Hits []struct {
-				Source map[string]any `json:"_source"`
+				Source esSource `json:"_source"`
 			} `json:"hits"`
 		} `json:"hits"`
 	}
 
-	if err := json.Unmarshal(body, &esResponse); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	if err := json.NewDecoder(resp.Body).Decode(&esResponse); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
 	// Extract packages with deduplication
@@ -177,38 +197,36 @@ func (c *Client) SearchPackages(query string) ([]models.Package, error) {
 
 	for _, hit := range esResponse.Hits.Hits {
 		src := hit.Source
-		attrName := getString(src, "package_attr_name")
-		version := getString(src, "package_pversion")
 
 		// Create unique key for deduplication
-		key := attrName + ":" + version
+		key := src.AttrName + ":" + src.PVersion
 		if seen[key] {
 			continue // Skip duplicates
 		}
 		seen[key] = true
 
 		pkg := models.Package{
-			Name:            getString(src, "package_pname"),
-			Version:         version,
-			Description:     getString(src, "package_description"),
-			AttrName:        attrName,
-			AttrSet:         getString(src, "package_attr_set"),
-			LongDescription: getString(src, "package_longDescription"),
-			License:         getString(src, "package_license"),
-			LicenseSet:      getArray(src, "package_license_set"),
-			HomepageLinks:   getArray(src, "package_homepage"),
-			Platforms:       getArray(src, "package_platforms"),
-			Programs:        getArray(src, "package_programs"),
-			Maintainers:     getArray(src, "package_maintainers"),
-			MaintainersSet:  getArray(src, "package_maintainers_set"),
-			Teams:           getArray(src, "package_teams"),
-			TeamsSet:        getArray(src, "package_teams_set"),
-			Outputs:         getArray(src, "package_outputs"),
-			MainProgram:     getString(src, "package_mainProgram"),
-			DefaultOutput:   getString(src, "package_default_output"),
-			Position:        getString(src, "package_position"),
-			System:          getString(src, "package_system"),
-			Hydra:           getMap(src, "package_hydra"),
+			Name:            src.PName,
+			Version:         src.PVersion,
+			Description:     src.Description,
+			AttrName:        src.AttrName,
+			AttrSet:         src.AttrSet,
+			LongDescription: src.LongDesc,
+			License:         src.License,
+			LicenseSet:      src.LicenseSet,
+			HomepageLinks:   src.Homepage,
+			Platforms:       src.Platforms,
+			Programs:        src.Programs,
+			Maintainers:     src.Maintainers,
+			MaintainersSet:  src.MaintainersSet,
+			Teams:           src.Teams,
+			TeamsSet:        src.TeamsSet,
+			Outputs:         src.Outputs,
+			MainProgram:     src.MainProgram,
+			DefaultOutput:   src.DefaultOutput,
+			Position:        src.Position,
+			System:          src.System,
+			Hydra:           src.Hydra,
 		}
 		if pkg.Name == "" {
 			pkg.Name = pkg.AttrName
@@ -217,31 +235,4 @@ func (c *Client) SearchPackages(query string) ([]models.Package, error) {
 	}
 
 	return packages, nil
-}
-
-func getString(m map[string]any, key string) string {
-	if val, ok := m[key]; ok {
-		if str, ok := val.(string); ok {
-			return str
-		}
-	}
-	return ""
-}
-
-func getArray(m map[string]any, key string) []any {
-	if val, ok := m[key]; ok {
-		if arr, ok := val.([]any); ok {
-			return arr
-		}
-	}
-	return []any{}
-}
-
-func getMap(m map[string]any, key string) map[string]any {
-	if val, ok := m[key]; ok {
-		if mapVal, ok := val.(map[string]any); ok {
-			return mapVal
-		}
-	}
-	return nil
 }

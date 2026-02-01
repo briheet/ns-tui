@@ -6,11 +6,24 @@ import (
 	"github.com/briheet/ns-tui/internal/api"
 	"github.com/briheet/ns-tui/internal/hm"
 	"github.com/briheet/ns-tui/internal/models"
+	"github.com/briheet/ns-tui/internal/styles"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
+
+// renderCache holds pre-rendered strings that only change on window resize.
+type renderCache struct {
+	banner      string
+	bannerWidth int
+
+	helpInsert string
+	helpNormal string
+	helpDetail string
+	helpWidth  int
+}
 
 // Model represents the application state
 type Model struct {
@@ -34,6 +47,7 @@ type Model struct {
 	showHelp              bool
 	selectedTab           int       // 0=Nixpkgs, 1=Home Manager, 2=Pacman
 	tabQueries            [3]string // Saved search text per tab
+	cache                 renderCache
 	// Home Manager state
 	hmOptions         []models.HMOption // All loaded HM options
 	hmSearchResults   []models.HMOption // Current HM search results
@@ -61,6 +75,29 @@ func NewModel() Model {
 		mode:         models.InsertMode,
 		apiClient:    api.NewClient(),
 		spinner:      models.NewSpinner(),
+	}
+}
+
+// buildRenderCache pre-renders static UI sections that only change on resize.
+func (m Model) buildRenderCache() renderCache {
+	center := func(s string) string {
+		return lipgloss.NewStyle().Align(lipgloss.Center).Width(m.width).Render(s)
+	}
+
+	helpInsert := center(styles.HelpStyle.Render(
+		"esc: normal mode • ↑/↓: navigate • tab: switch source • ?: help • q: quit"))
+	helpNormal := center(styles.HelpStyle.Render(
+		"i: insert mode • j/k: navigate • enter/space: details • g/G: top/bottom • tab: switch source • ?: help • q: quit"))
+	helpDetail := center(styles.HelpStyle.Render(
+		"j/k: navigate related • enter/space: view option • esc/b: back • ?: help • q: quit"))
+
+	return renderCache{
+		banner:      m.buildBannerHeader(),
+		bannerWidth: m.width,
+		helpInsert:  helpInsert,
+		helpNormal:  helpNormal,
+		helpDetail:  helpDetail,
+		helpWidth:   m.width,
 	}
 }
 
