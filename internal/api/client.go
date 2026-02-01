@@ -254,3 +254,184 @@ func formatLicenses(licenses []esLicense) string {
 	}
 	return strings.Join(names, ", ")
 }
+
+// esOptionSource is the typed representation of an ES _source document for NixOS options.
+type esOptionSource struct {
+	Name        string  `json:"option_name"`
+	Description string  `json:"option_description"`
+	Type        string  `json:"option_type"`
+	Default     *string `json:"option_default"`
+	Example     *string `json:"option_example"`
+	Source      string  `json:"option_source"`
+}
+
+// SearchOptions searches for NixOS options matching the query
+func (c *Client) SearchOptions(query string) ([]models.NixOSOption, error) {
+	esQuery := map[string]any{
+		"from": 0,
+		"size": 50,
+		"query": map[string]any{
+			"bool": map[string]any{
+				"must": []any{
+					map[string]any{
+						"dis_max": map[string]any{
+							"queries": []any{
+								map[string]any{
+									"multi_match": map[string]any{
+										"query": query,
+										"fields": []string{
+											"option_name^9",
+											"option_name.*^5.5",
+											"option_description^3",
+										},
+										"type":      "best_fields",
+										"fuzziness": "AUTO",
+									},
+								},
+								map[string]any{
+									"wildcard": map[string]any{
+										"option_name": map[string]any{
+											"value":            "*" + query + "*",
+											"case_insensitive": true,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				"should": []any{
+					map[string]any{
+						"term": map[string]any{
+							"option_name": map[string]any{
+								"value": query,
+								"boost": 100,
+							},
+						},
+					},
+					map[string]any{
+						"prefix": map[string]any{
+							"option_name": map[string]any{
+								"value": query,
+								"boost": 50,
+							},
+						},
+					},
+				},
+				"filter": []any{
+					map[string]any{
+						"term": map[string]any{
+							"type": "option",
+						},
+					},
+				},
+			},
+		},
+		"sort": []any{
+			"_score",
+			map[string]any{
+				"option_name": "desc",
+			},
+		},
+	}
+
+	return c.doOptionSearch(esQuery)
+}
+
+// SearchRelatedOptions searches for NixOS options that share the same parent prefix.
+func (c *Client) SearchRelatedOptions(parentPrefix string) ([]models.NixOSOption, error) {
+	esQuery := map[string]any{
+		"from": 0,
+		"size": 50,
+		"query": map[string]any{
+			"bool": map[string]any{
+				"must": []any{
+					map[string]any{
+						"wildcard": map[string]any{
+							"option_name": map[string]any{
+								"value": parentPrefix + ".*",
+							},
+						},
+					},
+				},
+				"filter": []any{
+					map[string]any{
+						"term": map[string]any{
+							"type": "option",
+						},
+					},
+				},
+			},
+		},
+		"sort": []any{
+			map[string]any{
+				"option_name": "asc",
+			},
+		},
+	}
+
+	return c.doOptionSearch(esQuery)
+}
+
+// doOptionSearch executes an ES query and parses the response into NixOSOption slice.
+func (c *Client) doOptionSearch(esQuery map[string]any) ([]models.NixOSOption, error) {
+	jsonData, err := json.Marshal(esQuery)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal query: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/%s/_search", c.baseURL, c.index)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Add("Authorization", "Basic "+c.auth)
+	req.Header.Add("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("elasticsearch returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var esResponse struct {
+		Hits struct {
+			Hits []struct {
+				Source esOptionSource `json:"_source"`
+			} `json:"hits"`
+		} `json:"hits"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&esResponse); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	options := make([]models.NixOSOption, 0, len(esResponse.Hits.Hits))
+	seen := make(map[string]bool)
+
+	for _, hit := range esResponse.Hits.Hits {
+		src := hit.Source
+		if seen[src.Name] {
+			continue
+		}
+		seen[src.Name] = true
+
+		options = append(options, models.NixOSOption{
+			Name:        src.Name,
+			Description: src.Description,
+			Type:        src.Type,
+			Default:     src.Default,
+			Example:     src.Example,
+			Source:      src.Source,
+			Loc:         strings.Split(src.Name, "."),
+		})
+	}
+
+	return options, nil
+}

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/briheet/ns-tui/internal/hm"
@@ -109,6 +110,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if m.hmCursor < len(m.hmSearchResults)-1 {
 						m.hmCursor++
 					}
+				} else if m.selectedTab == 2 && len(m.nixosSearchResults) > 0 {
+					if m.nixosCursor < len(m.nixosSearchResults)-1 {
+						m.nixosCursor++
+					}
 				}
 				return m, nil
 			}
@@ -122,6 +127,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if m.hmCursor > 0 {
 						m.hmCursor--
 					}
+				} else if m.selectedTab == 2 && len(m.nixosSearchResults) > 0 {
+					if m.nixosCursor > 0 {
+						m.nixosCursor--
+					}
 				}
 				return m, nil
 			}
@@ -133,6 +142,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else if m.selectedTab == 1 && len(m.hmSearchResults) > 0 {
 					m.hmCursor = 0
 					m.hmScrollOffset = 0
+				} else if m.selectedTab == 2 && len(m.nixosSearchResults) > 0 {
+					m.nixosCursor = 0
+					m.nixosScrollOffset = 0
 				}
 				return m, nil
 			}
@@ -142,6 +154,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cursor = len(m.packages) - 1
 				} else if m.selectedTab == 1 && len(m.hmSearchResults) > 0 {
 					m.hmCursor = len(m.hmSearchResults) - 1
+				} else if m.selectedTab == 2 && len(m.nixosSearchResults) > 0 {
+					m.nixosCursor = len(m.nixosSearchResults) - 1
 				}
 				return m, nil
 			}
@@ -170,6 +184,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.mode = models.DetailMode
 					return m, nil
 				}
+				if m.selectedTab == 2 && len(m.nixosSearchResults) > 0 {
+					selected := m.nixosSearchResults[m.nixosCursor]
+					m.selectedNixOSOption = &selected
+					m.nixosRelatedCursor = 0
+					m.nixosRelatedScrollOffset = 0
+					m.nixosDetailHistory = nil
+					m.nixosRelatedLoading = true
+					m.mode = models.DetailMode
+					if len(selected.Loc) >= 2 {
+						parentPrefix := strings.Join(selected.Loc[:len(selected.Loc)-1], ".")
+						return m, fetchRelatedNixOSOptions(m.apiClient, parentPrefix, selected.Name)
+					}
+					m.nixosRelatedLoading = false
+					return m, nil
+				}
 			}
 		case "down":
 			if m.mode == models.InsertMode {
@@ -180,6 +209,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else if m.selectedTab == 1 && len(m.hmSearchResults) > 0 {
 					if m.hmCursor < len(m.hmSearchResults)-1 {
 						m.hmCursor++
+					}
+				} else if m.selectedTab == 2 && len(m.nixosSearchResults) > 0 {
+					if m.nixosCursor < len(m.nixosSearchResults)-1 {
+						m.nixosCursor++
 					}
 				}
 				return m, nil
@@ -193,6 +226,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else if m.selectedTab == 1 && len(m.hmSearchResults) > 0 {
 					if m.hmCursor > 0 {
 						m.hmCursor--
+					}
+				} else if m.selectedTab == 2 && len(m.nixosSearchResults) > 0 {
+					if m.nixosCursor > 0 {
+						m.nixosCursor--
 					}
 				}
 				return m, nil
@@ -248,6 +285,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		return m, nil
 
+	case nixosSearchResultMsg:
+		m.loading = false
+		if msg.err != nil {
+			m.nixosErr = msg.err
+		} else {
+			m.nixosSearchResults = msg.options
+			m.nixosCursor = 0
+			m.nixosScrollOffset = 0
+			m.nixosErr = nil
+		}
+		return m, nil
+
+	case nixosRelatedSearchMsg:
+		m.nixosRelatedLoading = false
+		if msg.err == nil {
+			m.nixosRelatedOptions = msg.options
+		} else {
+			m.nixosRelatedOptions = nil
+		}
+		return m, nil
+
 	case clipboardMsg:
 		// Show toast notification for copy success/failure
 		if msg.success {
@@ -296,6 +354,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, tea.Tick(150*time.Millisecond, func(t time.Time) tea.Msg {
 						return searchHMOptions(m.hmOptions, m.hmLastQuery)()
 					})
+				} else if m.selectedTab == 2 {
+					// NixOS Options: API search with debounce
+					m.nixosLastQuery = m.lastQuery
+					return m, tea.Tick(300*time.Millisecond, func(t time.Time) tea.Msg {
+						return performOptionSearch(m.apiClient, m.nixosLastQuery)()
+					})
 				}
 			} else {
 				if m.selectedTab == 0 {
@@ -306,6 +370,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.hmSearchResults = []models.HMOption{}
 					m.hmCursor = 0
 					m.hmScrollOffset = 0
+				} else if m.selectedTab == 2 {
+					m.nixosSearchResults = []models.NixOSOption{}
+					m.nixosCursor = 0
+					m.nixosScrollOffset = 0
 				}
 			}
 		}
@@ -345,11 +413,16 @@ func (m *Model) handleTabSwitch() tea.Cmd {
 		}
 		// Not loaded — check cache
 		return checkHMCache()
-	default:
-		// Pacman — still under development
-		m.textInput.Placeholder = "Search Pacman packages..."
+	case 2:
+		// NixOS Options tab
+		m.textInput.Placeholder = "Search NixOS options..."
+		if m.textInput.Value() != "" && len(m.nixosSearchResults) == 0 {
+			m.loading = true
+			return performOptionSearch(m.apiClient, m.textInput.Value())
+		}
 		return nil
 	}
+	return nil
 }
 
 // copyInstallCommand copies the selected installation command to clipboard
@@ -384,6 +457,10 @@ func (m Model) handleDetailModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Route to HM detail handler if viewing an HM option
 	if m.selectedHMOption != nil {
 		return m.handleHMDetailModeKeys(msg)
+	}
+	// Route to NixOS detail handler if viewing a NixOS option
+	if m.selectedNixOSOption != nil {
+		return m.handleNixOSDetailModeKeys(msg)
 	}
 
 	switch msg.String() {
@@ -474,6 +551,78 @@ func (m Model) handleHMDetailModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.hmRelatedOptions = hm.FindSiblings(m.hmOptions, selected)
 			m.hmRelatedCursor = 0
 			m.hmRelatedScrollOffset = 0
+		}
+		return m, nil
+	}
+	return m, nil
+}
+
+// handleNixOSDetailModeKeys handles key presses in the NixOS option detail view
+func (m Model) handleNixOSDetailModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c", "q":
+		return m, tea.Quit
+
+	case "esc", "backspace", "b":
+		if len(m.nixosDetailHistory) > 0 {
+			last := m.nixosDetailHistory[len(m.nixosDetailHistory)-1]
+			m.nixosDetailHistory = m.nixosDetailHistory[:len(m.nixosDetailHistory)-1]
+			opt := last.Option
+			m.selectedNixOSOption = &opt
+			m.nixosRelatedOptions = last.Related
+			m.nixosRelatedCursor = last.Cursor
+			m.nixosRelatedScrollOffset = last.ScrollOffset
+		} else {
+			m.mode = models.NormalMode
+			m.selectedNixOSOption = nil
+			m.nixosRelatedOptions = nil
+			m.nixosRelatedCursor = 0
+			m.nixosRelatedScrollOffset = 0
+		}
+		return m, nil
+
+	case "j", "down":
+		if len(m.nixosRelatedOptions) > 0 && m.nixosRelatedCursor < len(m.nixosRelatedOptions)-1 {
+			m.nixosRelatedCursor++
+		}
+		return m, nil
+
+	case "k", "up":
+		if m.nixosRelatedCursor > 0 {
+			m.nixosRelatedCursor--
+		}
+		return m, nil
+
+	case "g":
+		m.nixosRelatedCursor = 0
+		m.nixosRelatedScrollOffset = 0
+		return m, nil
+
+	case "G":
+		if len(m.nixosRelatedOptions) > 0 {
+			m.nixosRelatedCursor = len(m.nixosRelatedOptions) - 1
+		}
+		return m, nil
+
+	case "enter", " ":
+		if len(m.nixosRelatedOptions) > 0 {
+			m.nixosDetailHistory = append(m.nixosDetailHistory, models.NixOSDetailEntry{
+				Option:       *m.selectedNixOSOption,
+				Related:      m.nixosRelatedOptions,
+				Cursor:       m.nixosRelatedCursor,
+				ScrollOffset: m.nixosRelatedScrollOffset,
+			})
+			selected := m.nixosRelatedOptions[m.nixosRelatedCursor]
+			m.selectedNixOSOption = &selected
+			m.nixosRelatedCursor = 0
+			m.nixosRelatedScrollOffset = 0
+			m.nixosRelatedLoading = true
+			if len(selected.Loc) >= 2 {
+				parentPrefix := strings.Join(selected.Loc[:len(selected.Loc)-1], ".")
+				return m, fetchRelatedNixOSOptions(m.apiClient, parentPrefix, selected.Name)
+			}
+			m.nixosRelatedLoading = false
+			m.nixosRelatedOptions = nil
 		}
 		return m, nil
 	}

@@ -35,3 +35,15 @@ type hmFetchResultMsg struct {
 type hmSearchResultMsg struct {
 	results []models.HMOption
 }
+
+// nixosSearchResultMsg is sent when NixOS option search results are received
+type nixosSearchResultMsg struct {
+	options []models.NixOSOption
+	err     error
+}
+
+// nixosRelatedSearchMsg is sent when related NixOS options are fetched for detail view
+type nixosRelatedSearchMsg struct {
+	options []models.NixOSOption
+	err     error
+}
