@@ -28,6 +28,11 @@ func (m Model) View() string {
 		return m.renderHMPromptOverlay()
 	}
 
+	// Show detailed NixOS option view
+	if m.mode == models.DetailMode && m.selectedNixOSOption != nil {
+		return m.renderNixOSDetailView()
+	}
+
 	// Show detailed HM option view
 	if m.mode == models.DetailMode && m.selectedHMOption != nil {
 		return m.renderHMDetailView()
@@ -62,7 +67,7 @@ func (m Model) renderSearchView() string {
 	header.WriteString(headerContent)
 
 	// Tabs
-	tabNames := []string{"Nixpkgs", "Home Manager", "Pacman"}
+	tabNames := []string{"Nixpkgs", "Home Manager", "NixOS Options"}
 	var tabParts []string
 
 	for i, name := range tabNames {
@@ -92,6 +97,8 @@ func (m Model) renderSearchView() string {
 		modeIndicator.WriteString(styles.PositionStyle.Render(fmt.Sprintf(" [%d/%d]", m.cursor+1, len(m.packages))))
 	} else if m.selectedTab == 1 && len(m.hmSearchResults) > 0 {
 		modeIndicator.WriteString(styles.PositionStyle.Render(fmt.Sprintf(" [%d/%d]", m.hmCursor+1, len(m.hmSearchResults))))
+	} else if m.selectedTab == 2 && len(m.nixosSearchResults) > 0 {
+		modeIndicator.WriteString(styles.PositionStyle.Render(fmt.Sprintf(" [%d/%d]", m.nixosCursor+1, len(m.nixosSearchResults))))
 	}
 
 	searchBox := styles.SearchBoxStyle.Render(m.textInput.View())
@@ -114,7 +121,7 @@ func (m Model) renderSearchView() string {
 	case 1:
 		resultsContent = m.renderHMResults(remainingLines)
 	case 2:
-		resultsContent = m.renderPacmanPlaceholder()
+		resultsContent = m.renderNixOSResults(remainingLines)
 	default:
 		resultsContent = m.renderResults(remainingLines)
 	}
@@ -200,7 +207,7 @@ func (m Model) buildBannerHeader() string {
 	case 1:
 		subtitleText = "Search Home Manager configuration options"
 	case 2:
-		subtitleText = "Search Pacman packages"
+		subtitleText = "Search NixOS configuration options"
 	default:
 		subtitleText = "Real-time package discovery with fuzzy search"
 	}
@@ -1148,17 +1155,293 @@ func (m Model) renderHelpOverlay() string {
 		Render(helpBox)
 }
 
-// renderPacmanPlaceholder renders an inline "under development" message for the Pacman tab
-func (m Model) renderPacmanPlaceholder() string {
+// renderNixOSResults renders the NixOS options search results within the given line budget
+func (m Model) renderNixOSResults(availHeight int) string {
 	var content strings.Builder
 
-	title := styles.PacmanTitleStyle.Render("Under Development")
-	content.WriteString(m.centerText(title))
-	content.WriteString("\n\n")
+	// Loading indicator with spinner
+	if m.loading {
+		loading := fmt.Sprintf("%s Searching...", m.spinner.View())
+		loadingStyled := styles.LoadingStyle.Render(loading)
+		content.WriteString(m.centerText(loadingStyled))
+		content.WriteString("\n")
+		return content.String()
+	}
 
-	message := styles.PacmanMsgStyle.Render("Pacman package search will be available in a future release.")
-	content.WriteString(m.centerText(message))
-	content.WriteString("\n")
+	// Error message
+	if m.nixosErr != nil {
+		errorMsg := styles.ErrorStyle.Render(fmt.Sprintf("Error: %v", m.nixosErr))
+		content.WriteString(m.centerText(errorMsg))
+		content.WriteString("\n")
+		return content.String()
+	}
+
+	// Results
+	if len(m.nixosSearchResults) > 0 {
+		// Reserve ~4 lines for count header and scroll indicators, each item ~3 lines
+		maxVisible := (availHeight - 4) / 3
+		if maxVisible < 3 {
+			maxVisible = 3
+		}
+
+		visibleCount := min(maxVisible, len(m.nixosSearchResults))
+		count := styles.CountStyle.Render(fmt.Sprintf("Found %d options (showing %d)", len(m.nixosSearchResults), visibleCount))
+		content.WriteString(m.centerText(count))
+		content.WriteString("\n\n")
+
+		// Ensure cursor is in view
+		if m.nixosCursor < m.nixosScrollOffset {
+			m.nixosScrollOffset = m.nixosCursor
+		}
+		if m.nixosCursor >= m.nixosScrollOffset+maxVisible {
+			m.nixosScrollOffset = m.nixosCursor - maxVisible + 1
+		}
+
+		start := m.nixosScrollOffset
+		end := min(m.nixosScrollOffset+maxVisible, len(m.nixosSearchResults))
+
+		for i := start; i < end; i++ {
+			content.WriteString(m.renderNixOSOptionItem(i))
+		}
+
+		// Scroll indicators
+		if m.nixosScrollOffset > 0 {
+			scrollUp := styles.ScrollIndicatorStyle.Render("More above")
+			content.WriteString(m.centerText(scrollUp))
+			content.WriteString("\n")
+		}
+		if end < len(m.nixosSearchResults) {
+			scrollDown := styles.ScrollIndicatorStyle.Render(fmt.Sprintf("%d more below", len(m.nixosSearchResults)-end))
+			content.WriteString(m.centerText(scrollDown))
+			content.WriteString("\n")
+		}
+	} else if m.nixosLastQuery != "" {
+		noResults := styles.NoResultsStyle.Render("No options found. Try a different search term.")
+		content.WriteString(m.centerText(noResults))
+		content.WriteString("\n")
+	} else {
+		hint := styles.HintStyle.Render("Type to search NixOS configuration options...")
+		content.WriteString(m.centerText(hint))
+		content.WriteString("\n")
+	}
 
 	return content.String()
+}
+
+// renderNixOSOptionItem renders a single NixOS option item
+func (m Model) renderNixOSOptionItem(index int) string {
+	opt := m.nixosSearchResults[index]
+
+	cursor := "  "
+	if m.nixosCursor == index {
+		cursor = "▶ "
+	}
+
+	name := styles.PackageNameStyle.Render(opt.Name)
+	typeStr := styles.VersionStyle.Render(opt.Type)
+
+	// Collapse newlines, strip HTML, and trim to single line
+	desc := stripHTML(opt.Description)
+	desc = strings.Join(strings.Fields(desc), " ")
+	maxDescLen := 70
+	if m.width > 100 {
+		maxDescLen = 100
+	}
+	if len(desc) > maxDescLen {
+		desc = desc[:maxDescLen-3] + "..."
+	}
+	desc = styles.DescriptionStyle.Render(desc)
+
+	var b strings.Builder
+	b.WriteString(cursor)
+	b.WriteString(name)
+	b.WriteString("  ")
+	b.WriteString(typeStr)
+	b.WriteString("\n     ")
+	b.WriteString(desc)
+	line := b.String()
+
+	var renderedLine string
+	if m.nixosCursor == index {
+		renderedLine = styles.SelectedItemStyle.Render(line)
+	} else {
+		renderedLine = styles.ResultItemStyle.Render(line)
+	}
+
+	return m.centerText(renderedLine) + "\n"
+}
+
+// renderNixOSDetailView renders the detailed NixOS option view
+func (m Model) renderNixOSDetailView() string {
+	var content strings.Builder
+	opt := m.selectedNixOSOption
+
+	// Calculate responsive box width (same as other detail views)
+	boxWidth := int(float64(m.width) * 0.9)
+	if boxWidth > 160 {
+		boxWidth = 160
+	}
+	centerStyle := lipgloss.NewStyle().Width(boxWidth - 4).Align(lipgloss.Center)
+
+	// 1. Breadcrumb from loc
+	breadcrumb := buildBreadcrumb(opt.Loc)
+	content.WriteString(centerStyle.Render(breadcrumb))
+	content.WriteString("\n\n")
+
+	// 2. Type
+	typeLine := styles.DetailLabelStyle.Render("Type: ") + styles.DetailValueStyle.Render(opt.Type)
+	content.WriteString(typeLine)
+	content.WriteString("\n\n")
+
+	// 3. Description
+	if opt.Description != "" {
+		content.WriteString(styles.DetailLabelStyle.Render("Description:"))
+		content.WriteString("\n")
+		desc := stripHTML(opt.Description)
+		wrapped := wrapText(strings.TrimSpace(desc), boxWidth-8)
+		content.WriteString(styles.DetailValueStyle.Render(wrapped))
+		content.WriteString("\n\n")
+	}
+
+	// 4. Default value
+	if opt.Default != nil {
+		defLine := styles.DetailLabelStyle.Render("Default: ") + styles.DetailValueStyle.Render(*opt.Default)
+		content.WriteString(defLine)
+		content.WriteString("\n\n")
+	}
+
+	// 5. Example value
+	if opt.Example != nil {
+		exLine := styles.DetailLabelStyle.Render("Example: ") + styles.DetailValueStyle.Render(*opt.Example)
+		content.WriteString(exLine)
+		content.WriteString("\n\n")
+	}
+
+	// 6. Source file + GitHub link
+	if opt.Source != "" {
+		content.WriteString(styles.DetailLabelStyle.Render("Source:"))
+		content.WriteString("\n")
+		content.WriteString("  " + styles.DetailValueStyle.Render(opt.Source))
+		content.WriteString("\n")
+		ghURL := "https://github.com/NixOS/nixpkgs/blob/nixos-unstable/" + opt.Source
+		content.WriteString("  " + styles.URLStyle.Render(ghURL))
+		content.WriteString("\n\n")
+	}
+
+	// 7. Related options section
+	if m.nixosRelatedLoading {
+		loading := fmt.Sprintf("%s Loading related options...", m.spinner.View())
+		content.WriteString(styles.LoadingStyle.Render(loading))
+		content.WriteString("\n\n")
+	} else if len(m.nixosRelatedOptions) > 0 {
+		parentPath := strings.Join(opt.Loc[:len(opt.Loc)-1], ".")
+		separatorLabel := fmt.Sprintf(" Related Options (%s.*) ", parentPath)
+		lineLen := boxWidth - 8 - len(separatorLabel)
+		leftLine := strings.Repeat("─", 2)
+		rightLine := ""
+		if lineLen > 2 {
+			rightLine = strings.Repeat("─", lineLen-2)
+		}
+		sep := styles.SeparatorStyle.Render(leftLine + separatorLabel + rightLine)
+		content.WriteString(sep)
+		content.WriteString("\n\n")
+
+		maxVisible := 8
+		if m.height > 30 {
+			maxVisible = 12
+		}
+
+		// Ensure cursor is in view
+		nixRelScroll := m.nixosRelatedScrollOffset
+		if m.nixosRelatedCursor < nixRelScroll {
+			nixRelScroll = m.nixosRelatedCursor
+		}
+		if m.nixosRelatedCursor >= nixRelScroll+maxVisible {
+			nixRelScroll = m.nixosRelatedCursor - maxVisible + 1
+		}
+
+		start := nixRelScroll
+		end := min(start+maxVisible, len(m.nixosRelatedOptions))
+
+		relCenterStyle := lipgloss.NewStyle().Align(lipgloss.Center).Width(boxWidth - 4)
+
+		for i := start; i < end; i++ {
+			rel := m.nixosRelatedOptions[i]
+			cur := "  "
+			if m.nixosRelatedCursor == i {
+				cur = "▶ "
+			}
+
+			nameStyled := styles.PackageNameStyle.Render(rel.Name)
+			typeStyled := styles.VersionStyle.Render(rel.Type)
+
+			// Truncate description for the related item
+			desc := stripHTML(rel.Description)
+			maxDescLen := 60
+			if m.width > 100 {
+				maxDescLen = 90
+			}
+			if len(desc) > maxDescLen {
+				desc = desc[:maxDescLen-3] + "..."
+			}
+			descStyled := styles.DescriptionStyle.Render(desc)
+
+			var b strings.Builder
+			b.WriteString(cur)
+			b.WriteString(nameStyled)
+			b.WriteString("  ")
+			b.WriteString(typeStyled)
+			b.WriteString("\n     ")
+			b.WriteString(descStyled)
+			line := b.String()
+
+			if m.nixosRelatedCursor == i {
+				line = styles.SelectedItemStyle.Render(line)
+			} else {
+				line = styles.ResultItemStyle.Render(line)
+			}
+			content.WriteString(relCenterStyle.Render(line))
+			content.WriteString("\n\n")
+		}
+
+		// Scroll indicators
+		if start > 0 {
+			content.WriteString(styles.ScrollIndicatorStyle.Render("  More above"))
+			content.WriteString("\n")
+		}
+		if end < len(m.nixosRelatedOptions) {
+			content.WriteString(styles.ScrollIndicatorStyle.Render(fmt.Sprintf("  %d more below", len(m.nixosRelatedOptions)-end)))
+			content.WriteString("\n")
+		}
+		content.WriteString("\n")
+	} else {
+		content.WriteString(styles.HintGrayStyle.Render("No related options found."))
+		content.WriteString("\n\n")
+	}
+
+	// 8. Help bar
+	helpText := "j/k: navigate related • enter/space: view option • esc/b: back • ?: help • q: quit"
+	help := styles.HelpStyle.Render(helpText)
+	content.WriteString(help)
+
+	// 9. Wrap in box
+	boxHeight := m.height - 12
+	if boxHeight < 12 {
+		boxHeight = 12
+	}
+
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(styles.ColorPinkLight).
+		Padding(1, 2).
+		Width(boxWidth).
+		Height(boxHeight)
+
+	box := boxStyle.Render(content.String())
+
+	return lipgloss.NewStyle().
+		Width(m.width).
+		Height(m.height).
+		Align(lipgloss.Center, lipgloss.Center).
+		Render(box)
 }

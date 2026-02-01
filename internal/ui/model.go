@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"time"
 
 	"github.com/briheet/ns-tui/internal/api"
@@ -45,7 +46,7 @@ type Model struct {
 	toastMessage          string
 	toastVisible          bool
 	showHelp              bool
-	selectedTab           int       // 0=Nixpkgs, 1=Home Manager, 2=Pacman
+	selectedTab           int       // 0=Nixpkgs, 1=Home Manager, 2=NixOS Options
 	tabQueries            [3]string // Saved search text per tab
 	cache                 renderCache
 	// Home Manager state
@@ -65,6 +66,18 @@ type Model struct {
 	hmRelatedOptions      []models.HMOption      // Sibling options for current selection
 	hmRelatedCursor       int                    // Cursor in related options list
 	hmRelatedScrollOffset int                    // Scroll offset for related options
+	// NixOS Options state
+	nixosSearchResults       []models.NixOSOption       // Current NixOS option search results
+	nixosCursor              int                        // Cursor for NixOS results
+	nixosScrollOffset        int                        // Scroll offset for NixOS results
+	nixosLastQuery           string                     // Last NixOS search query
+	nixosErr                 error                      // NixOS-specific error
+	selectedNixOSOption      *models.NixOSOption        // Currently viewed NixOS option
+	nixosDetailHistory       []models.NixOSDetailEntry  // Navigation stack for back-traversal
+	nixosRelatedOptions      []models.NixOSOption       // Sibling options for current selection
+	nixosRelatedCursor       int                        // Cursor in related options list
+	nixosRelatedScrollOffset int                        // Scroll offset for related options
+	nixosRelatedLoading      bool                       // Whether related options fetch is in progress
 }
 
 // NewModel creates a new application model
@@ -138,5 +151,35 @@ func searchHMOptions(options []models.HMOption, query string) tea.Cmd {
 	return func() tea.Msg {
 		results := hm.Search(options, query, 50)
 		return hmSearchResultMsg{results: results}
+	}
+}
+
+// performOptionSearch executes the NixOS option search via API
+func performOptionSearch(client *api.Client, query string) tea.Cmd {
+	return func() tea.Msg {
+		options, err := client.SearchOptions(query)
+		return nixosSearchResultMsg{options: options, err: err}
+	}
+}
+
+// fetchRelatedNixOSOptions fetches sibling options for the detail view
+func fetchRelatedNixOSOptions(client *api.Client, parentPrefix string, excludeName string) tea.Cmd {
+	return func() tea.Msg {
+		options, err := client.SearchRelatedOptions(parentPrefix)
+		if err != nil {
+			return nixosRelatedSearchMsg{options: nil, err: err}
+		}
+		// Filter out the current option and keep only direct children
+		parentDepth := strings.Count(parentPrefix, ".") + 1
+		var filtered []models.NixOSOption
+		for _, opt := range options {
+			if opt.Name == excludeName {
+				continue
+			}
+			if len(opt.Loc) == parentDepth+1 {
+				filtered = append(filtered, opt)
+			}
+		}
+		return nixosRelatedSearchMsg{options: filtered, err: nil}
 	}
 }

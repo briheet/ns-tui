@@ -267,16 +267,6 @@ var (
 			Width(60)
 )
 
-// Pacman placeholder styles
-var (
-	PacmanTitleStyle = lipgloss.NewStyle().
-				Foreground(ColorYellow).
-				Bold(true)
-
-	PacmanMsgStyle = lipgloss.NewStyle().
-			Foreground(ColorGray).
-			Italic(true)
-)
 
 // SetTheme reassigns all color and style variables from a Catppuccin flavor.
 // Valid names: mocha, latte, frappe, macchiato. Defaults to mocha.
@@ -523,12 +513,4 @@ func SetTheme(name string) {
 		Padding(2, 4).
 		Width(60)
 
-	// Pacman placeholder styles
-	PacmanTitleStyle = lipgloss.NewStyle().
-		Foreground(ColorYellow).
-		Bold(true)
-
-	PacmanMsgStyle = lipgloss.NewStyle().
-		Foreground(ColorGray).
-		Italic(true)
 }
